@@ -104,9 +104,15 @@
         <main v-else-if="view === 'bank'" class="space-y-4">
           <div class="apple-card p-6">
             <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-              <div class="segmented-control w-full md:w-64 shrink-0">
-                <button @click="bankTab = 'all'" :class="{'active': bankTab === 'all'}">全部题库 ({{ allQuestions.length }})</button>
-                <button @click="bankTab = 'error'" :class="{'active': bankTab === 'error'}">错题集 ({{ Object.keys(errorBook).length }})</button>
+              <div class="flex items-center gap-3 w-full md:w-auto shrink-0">
+                <div class="segmented-control flex-1 md:w-64">
+                  <button @click="bankTab = 'all'" :class="{'active': bankTab === 'all'}">全部题库 ({{ allQuestions.length }})</button>
+                  <button @click="bankTab = 'error'" :class="{'active': bankTab === 'error'}">错题集 ({{ Object.keys(errorBook).length }})</button>
+                </div>
+                <label v-if="displayedBankQuestions.length" class="flex items-center gap-1.5 text-xs font-bold text-gray-500 whitespace-nowrap cursor-pointer">
+                  <input type="checkbox" :checked="allVisibleSelected" @change="toggleSelectAll" class="apple-check !w-4 !h-4" />
+                  全选
+                </label>
               </div>
               <div class="flex gap-2 w-full md:w-auto justify-end">
                 <button v-if="bankTab === 'all'" @click="scanDuplicateQuestions" class="apple-btn px-4 py-2 bg-indigo-50 text-indigo-600 font-bold text-sm hover:bg-indigo-100 whitespace-nowrap">扫描重复题</button>
@@ -389,6 +395,7 @@
           return value.replace(/[\s\p{P}\p{S}]/gu, '');
         };
         const displayedBankQuestions = computed(() => { if (bankTab.value === 'error') return allQuestions.value.filter(q => errorBook.value[q.id]); return allQuestions.value; });
+        const allVisibleSelected = computed(() => displayedBankQuestions.value.length > 0 && displayedBankQuestions.value.every(question => selectedBankQs.value.includes(question.id)));
         const duplicateQuestionIds = computed(() => {
           const counts = new Map();
           allQuestions.value.forEach(question => {
@@ -886,6 +893,15 @@
             }
         };
 
+        const toggleSelectAll = () => {
+          const visibleIds = displayedBankQuestions.value.map(question => question.id);
+          if (allVisibleSelected.value) {
+            selectedBankQs.value = selectedBankQs.value.filter(id => !visibleIds.includes(id));
+          } else {
+            selectedBankQs.value = [...new Set([...selectedBankQs.value, ...visibleIds])];
+          }
+        };
+
         const scanDuplicateQuestions = () => {
           const questions = allQuestions.value;
           const parents = questions.map((_, index) => index);
@@ -1110,7 +1126,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, isDuplicate, getPreviewDuplicate, duplicateLabel, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, isDuplicate, getPreviewDuplicate, duplicateLabel, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
