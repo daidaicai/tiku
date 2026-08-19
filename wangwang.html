@@ -197,6 +197,7 @@
                 <button @click="addMode = 'ai'" :class="{'active': addMode === 'ai'}">AI 批量提取</button>
               </div>
             </div>
+            <div v-if="addResult.message" class="p-3 rounded-xl text-sm font-semibold" :class="addResult.error ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'">{{ addResult.message }}</div>
             
             <!-- 手动录入 & 本地自动提取 -->
             <div v-if="addMode === 'manual'" class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-enter-active">
@@ -204,7 +205,10 @@
                 <div>
                   <label class="block text-xs font-bold text-gray-500 mb-1 flex justify-between items-center">
                     <span>⚡ 快捷粘贴 (0 消耗本地提取)</span>
-                    <button @click="quickParseManual" class="text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[10px] shadow-sm">一键拆分至下方 &darr;</button>
+                    <span class="flex gap-2">
+                      <button @click="quickParseManual" class="text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[10px] shadow-sm">解析当前题 &darr;</button>
+                      <button @click="importManualBatch" class="text-green-600 hover:text-green-700 bg-green-50 px-2 py-0.5 rounded text-[10px] shadow-sm">批量识别并添加</button>
+                    </span>
                   </label>
                   <textarea v-model="manualQ.rawPaste" @paste="handleQuickPaste" rows="4" placeholder="支持直接将标准题目粘贴至此 (格式含 A. B. 及 答案)，按 Ctrl+V 后将瞬间自动填充！" class="w-full p-3 bg-blue-50/30 border border-blue-100 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition"></textarea>
                 </div>
@@ -243,12 +247,17 @@
             <!-- AI 批量提取 -->
             <div v-if="addMode === 'ai'" class="space-y-5 fade-enter-active">
               <div @click="$refs.fileInput.click()" class="border-2 border-dashed border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 rounded-2xl p-6 text-center cursor-pointer transition relative">
-                <input ref="fileInput" type="file" accept="image/*" @change="handleFileUpload" class="hidden" />
-                <div v-if="!imagePreview"><div class="text-3xl mb-2 text-indigo-400">📸</div><p class="text-sm font-bold text-indigo-600">在此按 Ctrl + V 粘贴试卷截图</p></div>
-                <div v-else class="relative inline-block" @click.stop><img :src="imagePreview" class="max-h-48 mx-auto rounded-xl shadow" /><button @click="clearImage" class="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm">✕</button></div>
+                <input ref="fileInput" type="file" accept="image/*" multiple @change="handleFileUpload" class="hidden" />
+                <div><div class="text-3xl mb-2 text-indigo-400">📸</div><p class="text-sm font-bold text-indigo-600">点击选择多张试卷截图，或连续按 Ctrl + V 粘贴截图</p><p class="text-xs text-indigo-400 mt-1">已添加 {{ aiImages.length }} 张图片</p></div>
+              </div>
+              <div v-if="aiImages.length" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div v-for="image in aiImages" :key="image.id" class="relative bg-gray-50 border border-gray-100 rounded-xl p-2">
+                  <img :src="image.preview" class="w-full h-28 object-cover rounded-lg" />
+                  <button @click="removeAIImage(image.id)" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs" title="移除图片">✕</button>
+                </div>
               </div>
               <textarea v-model="rawText" rows="3" placeholder="粘贴长串纯文本题目，支持大批量自动切分..." class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
-              <button @click="processWithAI" :disabled="loading || (!imagePreview && !rawText.trim())" class="apple-btn w-full py-3.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm shadow-md disabled:opacity-50">
+              <button @click="processWithAI" :disabled="loading || (!aiImages.length && !rawText.trim())" class="apple-btn w-full py-3.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm shadow-md disabled:opacity-50">
                 {{ loading ? 'AI 极速拆题中...' : '🤖 调用 AI 批量提取' }}
               </button>
               <div v-if="importLog" class="text-xs font-bold text-center" :class="importError ? 'text-red-500' : 'text-green-600'">{{ importLog }}</div>
@@ -291,6 +300,7 @@
               <button @click="testConnection" :disabled="testLoading" class="apple-btn px-6 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 disabled:opacity-50">{{ testLoading ? '正在测试...' : '测试连接' }}</button>
             </div>
             <div v-if="diagLog" class="p-4 bg-gray-900 text-green-400 rounded-2xl text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{{ diagLog }}</div>
+            <div v-if="settingsResult.message" class="p-3 rounded-xl text-sm font-semibold" :class="settingsResult.error ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'">{{ settingsResult.message }}</div>
           </div>
 
           <div class="apple-card p-6 md:p-8 space-y-5">
@@ -366,8 +376,11 @@
 
         const previewQuestions = ref([]); 
         const loading = ref(false); const importLog = ref(''); const importError = ref(false);
-        const rawText = ref(''); const imagePreview = ref(''); const imageBase64 = ref('');
+        const rawText = ref('');
+        const aiImages = ref([]);
         const manualQ = ref({ type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '', rawPaste: '' });
+        const addResult = ref({ message: '', error: false });
+        const settingsResult = ref({ message: '', error: false });
         
         const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra' });
         const testLoading = ref(false); const diagLog = ref('');
@@ -386,7 +399,10 @@
         onUnmounted(() => window.removeEventListener('paste', handleGlobalPaste));
 
         const saveData = () => { localStorage.setItem('airquiz_db_v3', JSON.stringify(allQuestions.value)); localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value)); localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value)); };
-        const saveSettings = () => { localStorage.setItem('airquiz_cfg_v3', JSON.stringify(config.value)); alert('保存成功'); };
+        const saveSettings = () => {
+          try { localStorage.setItem('airquiz_cfg_v3', JSON.stringify(config.value)); settingsResult.value = { message: '配置已保存在当前浏览器。', error: false }; }
+          catch (error) { settingsResult.value = { message: `保存失败：${error.message}`, error: true }; }
+        };
 
         const isDuplicate = (title) => { 
             if (!title) return false;
@@ -402,13 +418,16 @@
             if (item.type.indexOf('image') !== -1) {
               e.preventDefault(); const file = item.getAsFile();
               if(addMode.value === 'manual') processBase64(file, (data) => manualQ.value.image = data);
-              else processBase64(file, (data, b64) => { imagePreview.value = data; imageBase64.value = b64; });
+              else addAIImage(file);
               break;
             }
           }
         };
 
-        const handleFileUpload = (e) => { if (e.target.files[0]) processBase64(e.target.files[0], (data, b64) => { imagePreview.value = data; imageBase64.value = b64; }); };
+        const handleFileUpload = (e) => {
+          Array.from(e.target.files || []).forEach(addAIImage);
+          e.target.value = '';
+        };
         const handleManualUpload = (e) => { if (e.target.files[0]) processBase64(e.target.files[0], (data) => manualQ.value.image = data); };
         
         const processBase64 = (file, callback) => {
@@ -423,11 +442,23 @@
             }; img.src = e.target.result;
           }; reader.readAsDataURL(file);
         };
-        const clearImage = () => { imagePreview.value = ''; imageBase64.value = ''; };
+        const addAIImage = (file) => {
+          if (!file || !file.type.startsWith('image/')) return;
+          processBase64(file, (preview, base64) => {
+            aiImages.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, preview, base64 });
+          });
+        };
+        const removeAIImage = (id) => { aiImages.value = aiImages.value.filter(image => image.id !== id); };
+        const clearImage = () => { aiImages.value = []; };
 
-        const handleQuickPaste = () => { setTimeout(quickParseManual, 50); };
-        const quickParseManual = () => {
-            const text = manualQ.value.rawPaste; if (!text) return;
+        const splitQuestionBlocks = (text) => {
+            const blocks = String(text || '').replace(/\r/g, '').split(/(?=^\s*(?:第\s*\d+\s*题|\d+\s*[.、．]))/m).map(block => block.trim()).filter(Boolean);
+            return blocks.length > 1 ? blocks : [String(text || '').trim()];
+        };
+
+        const handleQuickPaste = () => { window.setTimeout(quickParseManual, 0); };
+
+        const parseManualQuestion = (text) => {
             let type = manualQ.value.type || 'single';
             if (/[多双]选/.test(text)) type = 'multiple';
 
@@ -453,12 +484,59 @@
                     else if (currentSec === 'options' && parsedOptions.length > 0) parsedOptions[parsedOptions.length - 1] += ' ' + line;
                 }
             }
-            parsedTitle = parsedTitle.replace(/^\[.*?题\]\s*/, '');
-            if (parsedTitle) manualQ.value.title = parsedTitle;
-            if (parsedOptions.length > 0) { while (parsedOptions.length < 4) parsedOptions.push(''); manualQ.value.options = parsedOptions.slice(0, 4); }
-            if (parsedAnswers.length > 0) manualQ.value.answer = parsedAnswers;
-            if (parsedAnalysis) manualQ.value.analysis = parsedAnalysis;
-            manualQ.value.type = type; manualQ.value.rawPaste = ''; 
+            parsedTitle = parsedTitle.replace(/^\[.*?题\]\s*/, '').replace(/^(?:第\s*\d+\s*题|\d+\s*[.、．])\s*/, '');
+            return { type, title: parsedTitle, options: parsedOptions, answer: parsedAnswers, analysis: parsedAnalysis };
+        };
+
+        const resetManualQuestion = () => {
+            manualQ.value = { type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '', rawPaste: '' };
+        };
+
+        const quickParseManual = () => {
+            const text = manualQ.value.rawPaste.trim();
+            if (!text) { addResult.value = { message: '请先粘贴题目文本。', error: true }; return; }
+            const blocks = splitQuestionBlocks(text);
+            const parsed = parseManualQuestion(blocks[0]);
+            if (!parsed.title || parsed.options.length < 2 || parsed.answer.length === 0) {
+              addResult.value = { message: '未识别出完整题目。请确认包含题干、至少两个选项和“答案：A”格式。', error: true };
+              return;
+            }
+            manualQ.value.type = parsed.type;
+            manualQ.value.title = parsed.title;
+            manualQ.value.options = [...parsed.options, ...Array(Math.max(0, 4 - parsed.options.length)).fill('')].slice(0, 4);
+            manualQ.value.answer = parsed.answer;
+            manualQ.value.analysis = parsed.analysis;
+            addResult.value = { message: blocks.length > 1 ? `已解析第 1 题，共检测到 ${blocks.length} 题。可点击“批量识别并添加”。` : '题目已解析到下方表单，请核对后保存。', error: false };
+        };
+
+        const addNormalizedQuestions = (questions) => {
+          let added = 0; let duplicate = 0; let invalid = 0;
+          questions.forEach(rawQuestion => {
+            const question = normalizeQuestion(rawQuestion);
+            if ((!question.title && !question.image) || question.options.length < 2 || question.answer.length === 0 || (question.type === 'single' && question.answer.length !== 1)) { invalid++; return; }
+            if (isDuplicate(question.title)) { duplicate++; return; }
+            allQuestions.value.unshift(question); added++;
+          });
+          return { added, duplicate, invalid };
+        };
+
+        const importManualBatch = () => {
+          const text = manualQ.value.rawPaste.trim();
+          if (!text) { addResult.value = { message: '请先粘贴一题或多题文本。', error: true }; return; }
+          const parsed = splitQuestionBlocks(text).map(parseManualQuestion);
+          const result = addNormalizedQuestions(parsed);
+          if (result.added === 0) {
+            addResult.value = { message: `没有可添加的题目。重复 ${result.duplicate} 题，格式不完整 ${result.invalid} 题。`, error: true };
+            return;
+          }
+          try {
+            saveData();
+            resetManualQuestion();
+            addResult.value = { message: `已添加 ${result.added} 题${result.duplicate ? `，跳过重复题 ${result.duplicate} 题` : ''}${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}。`, error: false };
+          } catch (error) {
+            allQuestions.value.splice(0, result.added);
+            addResult.value = { message: `保存失败：${error.message}`, error: true };
+          }
         };
 
         const processErrorBookLogic = (qId, isCorrect, ansObj) => {
@@ -563,11 +641,20 @@
         };
         
         const commitManualQuestion = () => {
-            if(!manualQ.value.title.trim() && !manualQ.value.image) return alert('题干和图片不能都为空');
-            if(manualQ.value.answer.length === 0) return alert('必须设置答案');
-            if(isDuplicate(manualQ.value.title)) if(!confirm('可能存在重复的题目，强制添加吗？')) return;
-            allQuestions.value.unshift(normalizeQuestion({ ...manualQ.value, id: Date.now() + '' })); saveData();
-            alert('🎉 创建成功！'); manualQ.value = { type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '', rawPaste: '' };
+            const result = addNormalizedQuestions([{ ...manualQ.value, id: Date.now() + '' }]);
+            if (result.added === 0) {
+              const message = result.duplicate ? '题库中已存在相同题干，未重复添加。' : '请填写题干、至少两个选项，并设置有效答案。';
+              addResult.value = { message, error: true };
+              return;
+            }
+            try {
+              saveData();
+              resetManualQuestion();
+              addResult.value = { message: '题目已成功添加到题库。', error: false };
+            } catch (error) {
+              allQuestions.value.shift();
+              addResult.value = { message: `保存失败：${error.message}`, error: true };
+            }
         };
 
         const processWithAI = async () => {
@@ -576,7 +663,7 @@
           const contentArray = [];
           if (rawText.value) contentArray.push({ type: 'text', text: `${systemPrompt}\n内容：${rawText.value}` });
           else contentArray.push({ type: 'text', text: systemPrompt });
-          if (imageBase64.value) contentArray.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64.value}` } });
+          aiImages.value.forEach(image => contentArray.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image.base64}` } }));
 
           try {
             const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(config.value.endpoint.trim());
@@ -606,13 +693,19 @@
         };
 
         const commitQuestions = () => {
-          let addCount = 0; let dupCount = 0;
-          previewQuestions.value.forEach(pq => {
-              const question = normalizeQuestion(pq);
-              if (isDuplicate(question.title)) dupCount++; else { allQuestions.value.unshift(question); addCount++; }
-          }); saveData(); 
-          alert(`🎉 成功添加 ${addCount} 题` + (dupCount > 0 ? `，过滤了 ${dupCount} 道重复题。` : '。'));
-          previewQuestions.value = []; rawText.value = ''; clearImage(); view.value = 'bank'; 
+          const result = addNormalizedQuestions(previewQuestions.value);
+          if (result.added === 0) {
+            addResult.value = { message: `没有可添加的题目。重复 ${result.duplicate} 题，格式不完整 ${result.invalid} 题。`, error: true };
+            return;
+          }
+          try {
+            saveData();
+            previewQuestions.value = []; rawText.value = ''; clearImage();
+            addResult.value = { message: `AI 识别题已添加 ${result.added} 题${result.duplicate ? `，跳过重复题 ${result.duplicate} 题` : ''}${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}。`, error: false };
+          } catch (error) {
+            allQuestions.value.splice(0, result.added);
+            addResult.value = { message: `保存失败：${error.message}`, error: true };
+          }
         };
 
         const testConnection = async () => {
@@ -719,7 +812,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, imagePreview, manualQ, config, handleGlobalPaste, handleFileUpload, handleManualUpload, clearImage, deleteSelected, removeFromErrorBook, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, addResult, settingsResult, config, handleGlobalPaste, handleFileUpload, handleManualUpload, clearImage, removeAIImage, deleteSelected, removeFromErrorBook, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
