@@ -109,6 +109,7 @@
                 <button @click="bankTab = 'error'" :class="{'active': bankTab === 'error'}">错题集 ({{ Object.keys(errorBook).length }})</button>
               </div>
               <div class="flex gap-2 w-full md:w-auto justify-end">
+                <button v-if="bankTab === 'all'" @click="scanDuplicateQuestions" class="apple-btn px-4 py-2 bg-indigo-50 text-indigo-600 font-bold text-sm hover:bg-indigo-100 whitespace-nowrap">扫描重复题</button>
                 <button v-if="bankTab === 'error'" @click="removeFromErrorBook" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-yellow-50 text-yellow-600 font-bold text-sm hover:bg-yellow-100 disabled:opacity-30 whitespace-nowrap">移出错题本</button>
                 <button @click="deleteSelected" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-red-50 text-red-500 font-bold text-sm hover:bg-red-100 disabled:opacity-30 whitespace-nowrap">
                   彻底删除 <span v-if="selectedBankQs.length > 0">({{ selectedBankQs.length }})</span>
@@ -126,6 +127,7 @@
                   <div class="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
                     <span class="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" :class="q.type==='single'?'bg-blue-50 text-blue-600':'bg-purple-50 text-purple-600'">{{ q.type === 'single' ? '单选' : '多选' }}</span>
                     <span v-if="errorBook[q.id]" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-50 text-red-500 flex items-center shrink-0">错题本 (当前连对 {{errorBook[q.id].streak}}/2 次)</span>
+                    <span v-if="duplicateQuestionIds.has(q.id)" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-50 text-amber-600 shrink-0">重复题</span>
                   </div>
                   <span class="text-sm font-bold text-gray-700 line-clamp-2 leading-relaxed whitespace-pre-wrap">{{ q.title }}</span>
                   <div class="text-xs text-gray-400 mt-1.5 flex flex-wrap gap-3">
@@ -253,7 +255,7 @@
                   </div>
                 </div>
                 <textarea v-model="manualQ.analysis" rows="2" placeholder="解析说明 (可选)" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none mt-2"></textarea>
-                <button @click="commitManualQuestion" class="apple-btn w-full py-3 bg-blue-500 text-white font-bold text-sm shadow-md hover:bg-blue-600 mt-2">💾 保存到题库</button>
+                <button @click="commitManualQuestion" class="apple-btn w-full py-3 bg-blue-500 text-white font-bold text-sm shadow-md hover:bg-blue-600 mt-2">➕ 加入待选区</button>
               </div>
             </div>
 
@@ -277,15 +279,16 @@
             </div>
           </div>
 
-          <!-- AI 核对面板 -->
-          <div v-if="addMode === 'ai' && previewQuestions.length > 0" class="apple-card p-6 md:p-8 space-y-6">
+          <!-- 待选题目核对面板（手动与 AI 共用） -->
+          <div v-if="previewQuestions.length > 0" class="apple-card p-6 md:p-8 space-y-6">
             <div class="flex justify-between items-center border-b border-gray-100 pb-3">
-              <h3 class="text-sm font-bold text-gray-800">📋 识别结果核对 ({{ previewQuestions.length }}题)</h3>
+              <h3 class="text-sm font-bold text-gray-800">📋 待选题目核对 ({{ previewQuestions.length }}题)</h3>
               <button @click="commitQuestions" class="apple-btn px-5 py-2 bg-green-500 text-white text-sm font-bold shadow-md hover:bg-green-600">✓ 导入题库</button>
             </div>
             <div v-for="(q, qIndex) in previewQuestions" :key="qIndex" class="p-5 bg-gray-50 border border-gray-100 rounded-2xl space-y-4 relative">
               <button @click="previewQuestions.splice(qIndex, 1)" class="absolute top-4 right-4 text-red-400 hover:text-red-600 text-xs font-bold">删除</button>
               <select v-model="q.type" class="p-1.5 bg-white border border-gray-200 rounded text-xs font-bold text-gray-600 outline-none"><option value="single">单选题</option><option value="multiple">多选题</option></select>
+              <span v-if="isDuplicate(q.title)" class="ml-2 text-[10px] px-2 py-1 rounded bg-amber-50 text-amber-600 font-bold">题库中存在重复题，将不会导入</span>
               <input v-model="q.title" placeholder="题目正文" class="w-full font-bold p-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               <div class="space-y-2">
                 <div v-for="(opt, oIndex) in q.options" :key="oIndex" class="flex items-center space-x-2">
@@ -367,7 +370,23 @@
         const activeQuestion = computed(() => quizState.value.questions[quizState.value.currentIdx] || { id: '', title: '', options: [], answer: [] });
         const currentAnsRecord = computed(() => { const id = activeQuestion.value.id; if(!quizState.value.answers[id]) quizState.value.answers[id] = { selected: [], checked: false, isCorrect: false, score: 0, streakMsg: '' }; return quizState.value.answers[id]; });
         const isQuestionLocked = computed(() => quizState.value.submitted || currentAnsRecord.value.checked);
+        const titleKey = (title) => String(title || '')
+          .toLowerCase()
+          .replace(/^\s*(?:\[?(?:单选题|多选题|判断题)\]?\s*)?/, '')
+          .replace(/^\s*(?:第\s*\d+\s*题|\d+\s*[.、．])\s*/, '')
+          .replace(/[\s\p{P}\p{S}]/gu, '');
         const displayedBankQuestions = computed(() => { if (bankTab.value === 'error') return allQuestions.value.filter(q => errorBook.value[q.id]); return allQuestions.value; });
+        const duplicateQuestionIds = computed(() => {
+          const counts = new Map();
+          allQuestions.value.forEach(question => {
+            const key = titleKey(question.title);
+            if (key) counts.set(key, (counts.get(key) || 0) + 1);
+          });
+          return new Set(allQuestions.value.filter(question => {
+            const key = titleKey(question.title);
+            return key && counts.get(key) > 1;
+          }).map(question => question.id));
+        });
         const singleCount = computed(() => allQuestions.value.filter(q => q.type === 'single').length);
         const multiCount = computed(() => allQuestions.value.filter(q => q.type === 'multiple').length);
 
@@ -437,11 +456,9 @@
           catch (error) { settingsResult.value = { message: `保存失败：${error.message}`, error: true }; }
         };
 
-        const isDuplicate = (title) => { 
-            if (!title) return false;
-            const norm = t => String(t).replace(/\s+/g, '').toLowerCase(); 
-            const nt = norm(title); 
-            return allQuestions.value.some(q => q.title && norm(q.title) === nt); 
+        const isDuplicate = (title) => {
+            const key = titleKey(title);
+            return Boolean(key) && allQuestions.value.some(question => titleKey(question.title) === key);
         };
 
         const handleGlobalPaste = (e) => {
@@ -646,7 +663,7 @@
 
           manualAIWorking.value = true;
           addResult.value = { message: 'AI 正在整理为可编辑题目...', error: false };
-          const prompt = '请将以下一题整理为纯 JSON 对象，不要 Markdown。格式：{"type":"single"或"multiple","title":"题干","options":["选项1","选项2"],"answer":[0],"analysis":"解析"}。answer 必须是从 0 开始的正确选项序号。请保留题目原意，不确定答案时仍尽力提取。内容：\n' + sourceText;
+          const prompt = '仅返回JSON对象，无Markdown：{"type":"single|multiple","title":"题干","options":["选项"],"answer":[0],"analysis":"解析"}。answer为从0开始的正确选项索引。尽量恢复下文题目：\n' + sourceText;
           const content = [{ type: 'text', text: prompt }];
           if (manualQ.value.image) content.push({ type: 'image_url', image_url: { url: manualQ.value.image } });
 
@@ -684,23 +701,28 @@
           return { added, duplicate, invalid };
         };
 
+        const stageQuestions = (questions) => {
+          let staged = 0; let invalid = 0;
+          questions.forEach(rawQuestion => {
+            const question = normalizeQuestion(rawQuestion);
+            if ((!question.title && !question.image) || question.options.length < 2 || question.answer.length === 0 || (question.type === 'single' && question.answer.length !== 1)) { invalid++; return; }
+            previewQuestions.value.push(question);
+            staged++;
+          });
+          return { staged, invalid };
+        };
+
         const importManualBatch = () => {
           const text = manualQ.value.rawPaste.trim();
           if (!text) { addResult.value = { message: '请先粘贴一题或多题文本。', error: true }; return; }
           const parsed = splitQuestionBlocks(text).map(parseManualQuestion);
-          const result = addNormalizedQuestions(parsed);
-          if (result.added === 0) {
-            addResult.value = { message: `没有可添加的题目。重复 ${result.duplicate} 题，格式不完整 ${result.invalid} 题。`, error: true };
+          const result = stageQuestions(parsed);
+          if (result.staged === 0) {
+            addResult.value = { message: `没有可加入待选区的题目，格式不完整 ${result.invalid} 题。`, error: true };
             return;
           }
-          try {
-            saveData();
-            resetManualQuestion();
-            addResult.value = { message: `已添加 ${result.added} 题${result.duplicate ? `，跳过重复题 ${result.duplicate} 题` : ''}${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}。`, error: false };
-          } catch (error) {
-            allQuestions.value.splice(0, result.added);
-            addResult.value = { message: `保存失败：${error.message}`, error: true };
-          }
+          manualQ.value.rawPaste = '';
+          addResult.value = { message: `已加入待选区 ${result.staged} 题${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}，请核对后统一导入。`, error: false };
         };
 
         const processErrorBookLogic = (qId, isCorrect, ansObj) => {
@@ -796,6 +818,22 @@
             }
         };
 
+        const scanDuplicateQuestions = () => {
+          const groups = new Map();
+          allQuestions.value.forEach(question => {
+            const key = titleKey(question.title);
+            if (!key) return;
+            const list = groups.get(key) || [];
+            list.push(question);
+            groups.set(key, list);
+          });
+          const duplicateGroups = [...groups.values()].filter(group => group.length > 1);
+          const duplicateCount = duplicateGroups.reduce((sum, group) => sum + group.length, 0);
+          bankResult.value = duplicateGroups.length
+            ? { message: `检测到 ${duplicateGroups.length} 组重复题，共 ${duplicateCount} 道，已标记“重复题”。勾选后可按需删除。`, error: true }
+            : { message: '未检测到重复题。', error: false };
+        };
+
         const toggleManualAnswer = (idx) => {
             if(manualQ.value.type === 'single') manualQ.value.answer = [idx];
             else {
@@ -805,25 +843,19 @@
         };
         
         const commitManualQuestion = () => {
-            const result = addNormalizedQuestions([{ ...manualQ.value, id: Date.now() + '' }]);
-            if (result.added === 0) {
-              const message = result.duplicate ? '题库中已存在相同题干，未重复添加。' : '请填写题干、至少两个选项，并设置有效答案。';
+            const result = stageQuestions([{ ...manualQ.value, id: Date.now() + '' }]);
+            if (result.staged === 0) {
+              const message = '请填写题干、至少两个选项，并设置有效答案。';
               addResult.value = { message, error: true };
               return;
             }
-            try {
-              saveData();
-              resetManualQuestion();
-              addResult.value = { message: '题目已成功添加到题库。', error: false };
-            } catch (error) {
-              allQuestions.value.shift();
-              addResult.value = { message: `保存失败：${error.message}`, error: true };
-            }
+            resetManualQuestion();
+            addResult.value = { message: '题目已加入待选区，请核对、添加图片后再导入题库。', error: false };
         };
 
         const processWithAI = async () => {
           loading.value = true; importError.value = false; importLog.value = ''; previewQuestions.value = [];
-          const systemPrompt = `提取题目输出纯JSON数组,无markdown:[{"type":"single"|"multiple","title":"题干","options":["A","B","C","D"],"answer":[0,1],"analysis":"解析"}]。type必须单选single或多选multiple。`;
+          const systemPrompt = '仅返回JSON数组，无Markdown。每项：{"type":"single|multiple","title":"题干","options":["选项"],"answer":[0],"analysis":"解析"}。answer为从0开始的正确选项索引；信息不全也尽量提取。';
           const contentArray = [];
           if (rawText.value) contentArray.push({ type: 'text', text: `${systemPrompt}\n内容：${rawText.value}` });
           else contentArray.push({ type: 'text', text: systemPrompt });
@@ -976,7 +1008,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, removeFromErrorBook, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, duplicateQuestionIds, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, isDuplicate, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, removeFromErrorBook, scanDuplicateQuestions, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
