@@ -117,6 +117,13 @@
               </div>
             </div>
             <div v-if="bankResult.message" class="mb-4 p-3 rounded-xl text-sm font-semibold" :class="bankResult.error ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'">{{ bankResult.message }}</div>
+            <div v-if="duplicateGroups.length" class="mb-5 border border-amber-200 bg-amber-50/40 rounded-xl p-4 space-y-3">
+              <div class="flex justify-between items-center gap-3"><h3 class="text-sm font-bold text-amber-800">重复检查结果：{{ duplicateGroups.length }} 组</h3><button @click="clearDuplicateScan" class="text-xs font-bold text-amber-700">收起结果</button></div>
+              <div v-for="(group, groupIndex) in duplicateGroups" :key="groupIndex" class="border border-amber-100 bg-white rounded-lg p-3">
+                <div class="flex justify-between items-center gap-3 mb-2"><span class="text-xs font-bold text-amber-700">{{ group.summary }}</span><button @click="selectDuplicateGroup(group)" class="apple-btn px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold">勾选多余副本</button></div>
+                <div v-for="question in group.questions" :key="question.id" class="text-xs text-gray-600 py-1 leading-relaxed"><span class="font-bold text-gray-400 mr-1">{{ question.type === 'single' ? '单选' : '多选' }}</span>{{ question.title }}</div>
+              </div>
+            </div>
             
             <div v-if="displayedBankQuestions.length === 0" class="text-center text-gray-400 py-10">{{ bankTab === 'all' ? '题库空空如也' : '错题集内暂无题目' }}</div>
             
@@ -127,7 +134,7 @@
                   <div class="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
                     <span class="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" :class="q.type==='single'?'bg-blue-50 text-blue-600':'bg-purple-50 text-purple-600'">{{ q.type === 'single' ? '单选' : '多选' }}</span>
                     <span v-if="errorBook[q.id]" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-50 text-red-500 flex items-center shrink-0">错题本 (当前连对 {{errorBook[q.id].streak}}/2 次)</span>
-                    <span v-if="duplicateQuestionIds.has(q.id)" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-50 text-amber-600 shrink-0">重复题</span>
+                    <span v-if="duplicateLabel(q.id)" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-50 text-amber-600 shrink-0">{{ duplicateLabel(q.id) }}</span>
                   </div>
                   <span class="text-sm font-bold text-gray-700 line-clamp-2 leading-relaxed whitespace-pre-wrap">{{ q.title }}</span>
                   <div class="text-xs text-gray-400 mt-1.5 flex flex-wrap gap-3">
@@ -288,7 +295,8 @@
             <div v-for="(q, qIndex) in previewQuestions" :key="qIndex" class="p-5 bg-gray-50 border border-gray-100 rounded-2xl space-y-4 relative">
               <button @click="previewQuestions.splice(qIndex, 1)" class="absolute top-4 right-4 text-red-400 hover:text-red-600 text-xs font-bold">删除</button>
               <select v-model="q.type" class="p-1.5 bg-white border border-gray-200 rounded text-xs font-bold text-gray-600 outline-none"><option value="single">单选题</option><option value="multiple">多选题</option></select>
-              <span v-if="isDuplicate(q.title)" class="ml-2 text-[10px] px-2 py-1 rounded bg-amber-50 text-amber-600 font-bold">题库中存在重复题，将不会导入</span>
+              <span v-if="getPreviewDuplicate(q)" class="ml-2 text-[10px] px-2 py-1 rounded bg-amber-50 text-amber-600 font-bold">{{ getPreviewDuplicate(q).kind === 'exact' ? '完全重复，将不会导入' : `疑似重复 ${Math.round(getPreviewDuplicate(q).score * 100)}%` }}</span>
+              <button v-if="getPreviewDuplicate(q)?.kind === 'similar'" @click="q._allowSimilar = !q._allowSimilar" class="ml-2 text-[10px] px-2 py-1 rounded border border-amber-300 text-amber-700 font-bold">{{ q._allowSimilar ? '按疑似重复跳过' : '仍然导入此题' }}</button>
               <input v-model="q.title" placeholder="题目正文" class="w-full font-bold p-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               <div class="space-y-2">
                 <div v-for="(opt, oIndex) in q.options" :key="oIndex" class="flex items-center space-x-2">
@@ -370,11 +378,16 @@
         const activeQuestion = computed(() => quizState.value.questions[quizState.value.currentIdx] || { id: '', title: '', options: [], answer: [] });
         const currentAnsRecord = computed(() => { const id = activeQuestion.value.id; if(!quizState.value.answers[id]) quizState.value.answers[id] = { selected: [], checked: false, isCorrect: false, score: 0, streakMsg: '' }; return quizState.value.answers[id]; });
         const isQuestionLocked = computed(() => quizState.value.submitted || currentAnsRecord.value.checked);
-        const titleKey = (title) => String(title || '')
-          .toLowerCase()
-          .replace(/^\s*(?:\[?(?:单选题|多选题|判断题)\]?\s*)?/, '')
-          .replace(/^\s*(?:第\s*\d+\s*题|\d+\s*[.、．])\s*/, '')
-          .replace(/[\s\p{P}\p{S}]/gu, '');
+        const titleKey = (title) => {
+          let value = String(title || '').normalize('NFKC').toLowerCase().trim();
+          value = value
+            .replace(/^(?:\[?\s*(?:单选题|多选题|判断题|单选|多选)\s*\]?\s*)+/, '')
+            .replace(/^(?:(?:第\s*\d+\s*题)|(?:\d+\s*[.、．)])\s*)+/, '')
+            .replace(/[（(]\s*\d+(?:\.\d+)?\s*分\s*[）)]\s*$/, '')
+            .replace(/^(?:题目|题干)\s*[：:]\s*/, '')
+            .trim();
+          return value.replace(/[\s\p{P}\p{S}]/gu, '');
+        };
         const displayedBankQuestions = computed(() => { if (bankTab.value === 'error') return allQuestions.value.filter(q => errorBook.value[q.id]); return allQuestions.value; });
         const duplicateQuestionIds = computed(() => {
           const counts = new Map();
@@ -432,6 +445,8 @@
         const manualAIWorking = ref(false);
         const addResult = ref({ message: '', error: false });
         const bankResult = ref({ message: '', error: false });
+        const duplicateGroups = ref([]);
+        const duplicateLabels = ref({});
         const settingsResult = ref({ message: '', error: false });
         
         const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra' });
@@ -460,6 +475,50 @@
             const key = titleKey(title);
             return Boolean(key) && allQuestions.value.some(question => titleKey(question.title) === key);
         };
+
+        const grams = (text) => {
+          const value = titleKey(text);
+          if (value.length < 2) return new Set(value ? [value] : []);
+          const output = new Set();
+          for (let index = 0; index < value.length - 1; index++) output.add(value.slice(index, index + 2));
+          return output;
+        };
+        const diceScore = (left, right) => {
+          const a = grams(left); const b = grams(right);
+          if (!a.size || !b.size) return 0;
+          let shared = 0;
+          a.forEach(item => { if (b.has(item)) shared++; });
+          return (2 * shared) / (a.size + b.size);
+        };
+        const optionScore = (left, right) => diceScore((left.options || []).join(''), (right.options || []).join(''));
+        const compareQuestions = (candidate, existing) => {
+          const candidateKey = titleKey(candidate.title);
+          const existingKey = titleKey(existing.title);
+          if (!candidateKey || !existingKey) return null;
+          if (candidateKey === existingKey) return { kind: 'exact', score: 1, label: '题干完全重复' };
+          const lengthRatio = Math.min(candidateKey.length, existingKey.length) / Math.max(candidateKey.length, existingKey.length);
+          if (candidateKey.length < 12 || existingKey.length < 12 || lengthRatio < 0.72) return null;
+          const titleScore = diceScore(candidate.title, existing.title);
+          const choicesScore = optionScore(candidate, existing);
+          if (titleScore >= 0.92 || (titleScore >= 0.82 && choicesScore >= 0.75)) {
+            return { kind: 'similar', score: titleScore, label: `题干高度相似 ${Math.round(titleScore * 100)}%` };
+          }
+          return null;
+        };
+        const findDuplicateCandidate = (candidate, questions, skipId = '') => {
+          let best = null;
+          for (const existing of questions) {
+            if (!existing || existing.id === skipId) continue;
+            const result = compareQuestions(candidate, existing);
+            if (!result) continue;
+            const match = { ...result, question: existing };
+            if (match.kind === 'exact') return match;
+            if (!best || match.score > best.score) best = match;
+          }
+          return best;
+        };
+        const getPreviewDuplicate = (question) => findDuplicateCandidate(question, [...allQuestions.value, ...previewQuestions.value], question.id);
+        const duplicateLabel = (id) => duplicateLabels.value[id] || (duplicateQuestionIds.value.has(id) ? '完全重复' : '');
 
         const handleGlobalPaste = (e) => {
           if (e.defaultPrevented) return;
@@ -691,25 +750,34 @@
         };
 
         const addNormalizedQuestions = (questions) => {
-          let added = 0; let duplicate = 0; let invalid = 0;
+          let added = 0; let exactDuplicate = 0; let similarDuplicate = 0; let invalid = 0;
+          const accepted = [];
           questions.forEach(rawQuestion => {
             const question = normalizeQuestion(rawQuestion);
             if ((!question.title && !question.image) || question.options.length < 2 || question.answer.length === 0 || (question.type === 'single' && question.answer.length !== 1)) { invalid++; return; }
-            if (isDuplicate(question.title)) { duplicate++; return; }
-            allQuestions.value.unshift(question); added++;
+            const match = findDuplicateCandidate(question, [...allQuestions.value, ...accepted]);
+            if (match?.kind === 'exact') { exactDuplicate++; return; }
+            if (match?.kind === 'similar' && !rawQuestion._allowSimilar) { similarDuplicate++; return; }
+            accepted.push(question);
           });
-          return { added, duplicate, invalid };
+          accepted.forEach(question => allQuestions.value.unshift(question));
+          added = accepted.length;
+          return { added, exactDuplicate, similarDuplicate, invalid };
         };
 
         const stageQuestions = (questions) => {
-          let staged = 0; let invalid = 0;
+          let staged = 0; let exactDuplicate = 0; let similarDuplicate = 0; let invalid = 0;
           questions.forEach(rawQuestion => {
             const question = normalizeQuestion(rawQuestion);
             if ((!question.title && !question.image) || question.options.length < 2 || question.answer.length === 0 || (question.type === 'single' && question.answer.length !== 1)) { invalid++; return; }
+            const match = findDuplicateCandidate(question, [...allQuestions.value, ...previewQuestions.value]);
+            if (match?.kind === 'exact') exactDuplicate++;
+            if (match?.kind === 'similar') similarDuplicate++;
+            question._duplicate = match || null;
             previewQuestions.value.push(question);
             staged++;
           });
-          return { staged, invalid };
+          return { staged, exactDuplicate, similarDuplicate, invalid };
         };
 
         const importManualBatch = () => {
@@ -718,11 +786,11 @@
           const parsed = splitQuestionBlocks(text).map(parseManualQuestion);
           const result = stageQuestions(parsed);
           if (result.staged === 0) {
-            addResult.value = { message: `没有可加入待选区的题目，格式不完整 ${result.invalid} 题。`, error: true };
+            addResult.value = { message: `没有可加入待选区的题目，完全重复 ${result.exactDuplicate} 题，格式不完整 ${result.invalid} 题。`, error: true };
             return;
           }
           manualQ.value.rawPaste = '';
-          addResult.value = { message: `已加入待选区 ${result.staged} 题${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}，请核对后统一导入。`, error: false };
+          addResult.value = { message: `已加入待选区 ${result.staged} 题${result.exactDuplicate ? `，完全重复 ${result.exactDuplicate} 题` : ''}${result.similarDuplicate ? `，疑似重复 ${result.similarDuplicate} 题` : ''}${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}，请核对后统一导入。`, error: false };
         };
 
         const processErrorBookLogic = (qId, isCorrect, ansObj) => {
@@ -819,20 +887,54 @@
         };
 
         const scanDuplicateQuestions = () => {
-          const groups = new Map();
-          allQuestions.value.forEach(question => {
-            const key = titleKey(question.title);
-            if (!key) return;
-            const list = groups.get(key) || [];
-            list.push(question);
-            groups.set(key, list);
+          const questions = allQuestions.value;
+          const parents = questions.map((_, index) => index);
+          const root = index => parents[index] === index ? index : (parents[index] = root(parents[index]));
+          const join = (left, right) => { const a = root(left); const b = root(right); if (a !== b) parents[b] = a; };
+          const matches = [];
+
+          for (let left = 0; left < questions.length; left++) {
+            for (let right = left + 1; right < questions.length; right++) {
+              const match = compareQuestions(questions[left], questions[right]);
+              if (!match) continue;
+              join(left, right);
+              matches.push({ left, right, ...match });
+            }
+          }
+
+          const grouped = new Map();
+          questions.forEach((question, index) => {
+            const groupId = root(index);
+            const list = grouped.get(groupId) || [];
+            list.push({ question, index });
+            grouped.set(groupId, list);
           });
-          const duplicateGroups = [...groups.values()].filter(group => group.length > 1);
-          const duplicateCount = duplicateGroups.reduce((sum, group) => sum + group.length, 0);
-          bankResult.value = duplicateGroups.length
-            ? { message: `检测到 ${duplicateGroups.length} 组重复题，共 ${duplicateCount} 道，已标记“重复题”。勾选后可按需删除。`, error: true }
-            : { message: '未检测到重复题。', error: false };
+          const labels = {};
+          duplicateGroups.value = [...grouped.values()]
+            .filter(group => group.length > 1)
+            .map(group => {
+              const indexes = new Set(group.map(item => item.index));
+              const related = matches.filter(match => indexes.has(match.left) && indexes.has(match.right));
+              const exact = related.some(match => match.kind === 'exact');
+              const highest = related.reduce((best, match) => Math.max(best, match.score), 0);
+              const summary = exact ? '题干完全重复' : `题干高度相似（最高 ${Math.round(highest * 100)}%）`;
+              group.forEach(item => { labels[item.question.id] = exact ? '完全重复' : `疑似重复 ${Math.round(highest * 100)}%`; });
+              return { questions: group.map(item => item.question), summary };
+            });
+          duplicateLabels.value = labels;
+          const duplicateCount = duplicateGroups.value.reduce((sum, group) => sum + group.questions.length, 0);
+          bankResult.value = duplicateGroups.value.length
+            ? { message: `检测到 ${duplicateGroups.value.length} 组重复或疑似重复，共 ${duplicateCount} 道。请在结果中勾选多余副本后删除。`, error: true }
+            : { message: '未检测到重复或高度相似题目。', error: false };
         };
+        const selectDuplicateGroup = (group) => {
+          const keep = group.questions.find(question => question.image) || group.questions[0];
+          const selected = new Set(selectedBankQs.value);
+          group.questions.filter(question => question.id !== keep.id).forEach(question => selected.add(question.id));
+          selectedBankQs.value = [...selected];
+          bankResult.value = { message: `已保留一题并勾选 ${group.questions.length - 1} 个副本，可点击“彻底删除”处理。`, error: false };
+        };
+        const clearDuplicateScan = () => { duplicateGroups.value = []; duplicateLabels.value = {}; };
 
         const toggleManualAnswer = (idx) => {
             if(manualQ.value.type === 'single') manualQ.value.answer = [idx];
@@ -891,13 +993,13 @@
         const commitQuestions = () => {
           const result = addNormalizedQuestions(previewQuestions.value);
           if (result.added === 0) {
-            addResult.value = { message: `没有可添加的题目。重复 ${result.duplicate} 题，格式不完整 ${result.invalid} 题。`, error: true };
+            addResult.value = { message: `没有可导入的题目。完全重复 ${result.exactDuplicate} 题，疑似重复 ${result.similarDuplicate} 题，格式不完整 ${result.invalid} 题。`, error: true };
             return;
           }
           try {
             saveData();
             previewQuestions.value = []; rawText.value = ''; clearImage();
-            addResult.value = { message: `AI 识别题已添加 ${result.added} 题${result.duplicate ? `，跳过重复题 ${result.duplicate} 题` : ''}${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}。`, error: false };
+            addResult.value = { message: `已导入 ${result.added} 题${result.exactDuplicate ? `，跳过完全重复 ${result.exactDuplicate} 题` : ''}${result.similarDuplicate ? `，跳过疑似重复 ${result.similarDuplicate} 题` : ''}${result.invalid ? `，跳过格式不完整题目 ${result.invalid} 题` : ''}。`, error: false };
           } catch (error) {
             allQuestions.value.splice(0, result.added);
             addResult.value = { message: `保存失败：${error.message}`, error: true };
@@ -1008,7 +1110,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, duplicateQuestionIds, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, isDuplicate, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, removeFromErrorBook, scanDuplicateQuestions, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, isDuplicate, getPreviewDuplicate, duplicateLabel, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
