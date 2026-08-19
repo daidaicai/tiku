@@ -171,7 +171,11 @@
               <button @click="quitQuiz" class="hover:text-red-500 transition">退出 ✕</button>
             </div>
             <h2 class="text-lg font-bold mb-4 leading-relaxed text-gray-800 whitespace-pre-wrap">{{ activeQuestion.title }}</h2>
-            <div v-if="activeQuestion.image" class="mb-6"><img :src="activeQuestion.image" class="max-w-full max-h-64 rounded-xl shadow-sm border border-gray-100 mx-auto" /></div>
+            <div v-if="activeQuestion.image" class="mb-6 text-center">
+              <button @click="openImageViewer(activeQuestion.image)" type="button" title="放大查看题目图片" class="inline-block cursor-zoom-in">
+                <img :src="activeQuestion.image" alt="题目图片" class="max-w-full max-h-80 md:max-h-96 rounded-xl shadow-sm border border-gray-100 mx-auto" />
+              </button>
+            </div>
 
             <div class="space-y-3 mb-8">
               <button v-for="(opt, idx) in activeQuestion.options" :key="idx" @click="toggleAnswer(idx)" :disabled="isQuestionLocked" :class="getQuizOptionClass(idx)" class="w-full text-left px-5 py-4 rounded-2xl border-2 text-sm flex items-start transition-all apple-btn relative">
@@ -368,6 +372,10 @@
 
       </transition>
     </div>
+    <div v-if="imageViewer.src" @click.self="closeImageViewer" @keydown.esc="closeImageViewer" role="dialog" aria-modal="true" aria-label="题目图片放大查看" tabindex="-1" class="fixed inset-0 z-[100] bg-black/85 p-4 md:p-8 flex items-center justify-center">
+      <button @click="closeImageViewer" type="button" title="关闭图片查看" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white text-2xl leading-none">×</button>
+      <img :src="imageViewer.src" alt="题目图片放大图" class="max-w-full max-h-[88vh] object-contain select-none" />
+    </div>
   </div>
 
   <script>
@@ -459,6 +467,10 @@
         const duplicateGroups = ref([]);
         const duplicateLabels = ref({});
         const settingsResult = ref({ message: '', error: false });
+        const imageViewer = ref({ src: '' });
+        const openImageViewer = (src) => { if (src) imageViewer.value = { src }; };
+        const closeImageViewer = () => { imageViewer.value = { src: '' }; };
+        const handleImageViewerKey = (event) => { if (event.key === 'Escape') closeImageViewer(); };
         
         const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra', directConnection: false });
         const testLoading = ref(false); const diagLog = ref('');
@@ -508,6 +520,7 @@
             if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
           } catch (e) {}
           window.addEventListener('paste', handleGlobalPaste);
+          window.addEventListener('keydown', handleImageViewerKey);
           try {
             const savedQuestions = await readQuestionsFromIndexedDB();
             if (Array.isArray(savedQuestions)) allQuestions.value = normalizeQuestionList(savedQuestions);
@@ -522,7 +535,10 @@
           }
         });
 
-        onUnmounted(() => window.removeEventListener('paste', handleGlobalPaste));
+        onUnmounted(() => {
+          window.removeEventListener('paste', handleGlobalPaste);
+          window.removeEventListener('keydown', handleImageViewerKey);
+        });
 
         const saveData = () => {
           const snapshot = JSON.parse(JSON.stringify(allQuestions.value));
@@ -1320,7 +1336,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, config, isDuplicate, getPreviewDuplicate, duplicateLabel, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
