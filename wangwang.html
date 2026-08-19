@@ -321,7 +321,7 @@
                     <span class="text-xs font-bold text-indigo-600">点击后 Ctrl + V 粘贴</span>
                   </div>
                 </div>
-                <p class="text-[11px] text-gray-400">第 {{ qIndex + 1 }} 题的图片会独立保存并随题目导入。</p>
+                <p class="text-[11px] text-gray-400">第 {{ qIndex + 1 }} 题的图片会独立保存并随题目导入。{{ q._autoImage ? ' AI 已从试卷截图中自动截取，可在此更换。' : '' }}</p>
                 <div v-if="q.image" class="relative inline-block">
                   <img :src="q.image" class="max-h-40 rounded-xl border border-gray-200 shadow-sm" />
                   <button @click="q.image = ''" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs" title="移除图片">✕</button>
@@ -621,6 +621,62 @@
         };
         const removeAIImage = (id) => { aiImages.value = aiImages.value.filter(image => image.id !== id); };
         const clearImage = () => { aiImages.value = []; };
+
+        // AI returns coordinates in a 1000 x 1000 virtual canvas. The crop itself stays local.
+        const normalizeImageCrop = (value) => {
+          let values = Array.isArray(value) ? value : null;
+          if (!values && value && typeof value === 'object') {
+            const left = value.left ?? value.x;
+            const top = value.top ?? value.y;
+            const right = value.right ?? (Number(left) + Number(value.width));
+            const bottom = value.bottom ?? (Number(top) + Number(value.height));
+            values = [left, top, right, bottom];
+          }
+          if (!values || values.length < 4) return null;
+          const numbers = values.slice(0, 4).map(Number);
+          if (numbers.some(number => !Number.isFinite(number))) return null;
+          let [left, top, right, bottom] = numbers;
+          // Also tolerate x, y, width, height from models that ignore the requested format.
+          if (right <= left || bottom <= top) { right += left; bottom += top; }
+          left = Math.max(0, Math.min(1000, left)); top = Math.max(0, Math.min(1000, top));
+          right = Math.max(0, Math.min(1000, right)); bottom = Math.max(0, Math.min(1000, bottom));
+          return right - left >= 35 && bottom - top >= 35 ? [left, top, right, bottom] : null;
+        };
+
+        const cropRecognizedImage = (source, crop) => new Promise(resolve => {
+          if (!source || !crop) { resolve(''); return; }
+          const img = new Image();
+          img.onload = () => {
+            const [left, top, right, bottom] = crop;
+            const x = Math.max(0, Math.floor(img.width * left / 1000));
+            const y = Math.max(0, Math.floor(img.height * top / 1000));
+            const width = Math.max(1, Math.min(img.width - x, Math.ceil(img.width * (right - left) / 1000)));
+            const height = Math.max(1, Math.min(img.height - y, Math.ceil(img.height * (bottom - top) / 1000)));
+            const canvas = document.createElement('canvas');
+            canvas.width = width; canvas.height = height;
+            canvas.getContext('2d').drawImage(img, x, y, width, height, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
+          };
+          img.onerror = () => resolve('');
+          img.src = source.preview;
+        });
+
+        const attachRecognizedImages = async (rawQuestions) => {
+          let autoAttached = 0;
+          const questions = [];
+          for (const rawQuestion of rawQuestions) {
+            const question = normalizeQuestion(rawQuestion);
+            const sourceNumber = Number(rawQuestion?.imageSource ?? rawQuestion?.image_source ?? rawQuestion?.sourceImage ?? rawQuestion?.source_image);
+            const source = Number.isInteger(sourceNumber) && sourceNumber > 0 ? aiImages.value[sourceNumber - 1] : null;
+            const crop = normalizeImageCrop(rawQuestion?.imageCrop ?? rawQuestion?.image_crop ?? rawQuestion?.crop);
+            if (source && crop) {
+              const image = await cropRecognizedImage(source, crop);
+              if (image) { question.image = image; question._autoImage = true; autoAttached++; }
+            }
+            questions.push(question);
+          }
+          return { questions, autoAttached };
+        };
 
         const splitQuestionBlocks = (text) => {
             const blocks = String(text || '').replace(/\r/g, '').split(/(?=^\s*(?:第\s*\d+\s*题|\d+\s*[.、．]))/m).map(block => block.trim()).filter(Boolean);
@@ -973,18 +1029,26 @@
 
         const processWithAI = async () => {
           loading.value = true; importError.value = false; importLog.value = ''; previewQuestions.value = [];
-          const systemPrompt = '仅返回JSON数组，无Markdown。每项：{"type":"single|multiple","title":"题干","options":["选项"],"answer":[0],"analysis":"解析"}。answer为从0开始的正确选项索引；信息不全也尽量提取。';
+          const endpoint = config.value.endpoint.trim();
+          const apiKey = config.value.apiKey.trim();
+          const model = config.value.model.trim();
+          if (!endpoint || !apiKey || !model) {
+            loading.value = false; importError.value = true;
+            importLog.value = '请先在设置中填写 AI 接口、Key 和模型。';
+            return;
+          }
+          const systemPrompt = '仅返回JSON数组，无Markdown。每项：{"type":"single|multiple","title":"题干","options":["选项"],"answer":[0],"analysis":"解析","imageSource":1,"imageCrop":[左,上,右,下]}。answer是从0开始的正确选项序号。imageSource是输入截图从1开始的序号；只有题干必须依赖照片、图表、示意图时才填写imageSource和imageCrop。imageCrop为该截图内实际图片的边界，坐标按左上为(0,0)、右下为(1000,1000)；不要截取题干、选项、答案、按钮或整张页面。没有图片则省略这两项。逐题提取，信息不全也保留。';
           const contentArray = [];
           if (rawText.value) contentArray.push({ type: 'text', text: `${systemPrompt}\n内容：${rawText.value}` });
           else contentArray.push({ type: 'text', text: systemPrompt });
           aiImages.value.forEach(image => contentArray.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image.base64}` } }));
 
           try {
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(config.value.endpoint.trim());
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
             const res = await fetch(proxyUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.value.apiKey.trim()}` },
-              body: JSON.stringify({ model: config.value.model.trim(), messages: [{ role: 'user', content: contentArray }], temperature: 0.1 })
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+              body: JSON.stringify({ model, messages: [{ role: 'user', content: contentArray }], temperature: 0.1 })
             });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
@@ -993,9 +1057,14 @@
             const start = cleaned.indexOf('['); const end = cleaned.lastIndexOf(']');
             if(start === -1 || end === -1) throw new Error("返回格式不合法");
             
-            let parsed = JSON.parse(cleaned.substring(start, end + 1));
-            parsed = normalizeQuestionList(parsed);
-            if (parsed.length > 0) { previewQuestions.value = parsed; importLog.value = `✅ 识别了 ${parsed.length} 题`; } 
+            const parsed = JSON.parse(cleaned.substring(start, end + 1));
+            if (!Array.isArray(parsed)) throw new Error('AI 未返回题目数组');
+            const recognized = await attachRecognizedImages(parsed);
+            const validQuestions = normalizeQuestionList(recognized.questions);
+            if (validQuestions.length > 0) {
+              previewQuestions.value = validQuestions;
+              importLog.value = `识别了 ${validQuestions.length} 题${recognized.autoAttached ? `，自动绑定图片 ${recognized.autoAttached} 张` : '，未发现需单独绑定的图片'}`;
+            }
             else throw new Error("提取为空");
           } catch (err) { importError.value = true; importLog.value = `❌ 失败: ${err.message}`; } 
           finally { loading.value = false; }
