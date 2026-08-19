@@ -21,7 +21,6 @@
     .apple-check:checked { background-color: #007aff; border-color: #007aff; }
     .apple-check:checked::after { content: ''; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
     .apple-radio { border-radius: 50%; }
-    /* 分段控制器 */
     .segmented-control { background-color: #e5e5ea; padding: 3px; border-radius: 12px; display: flex; }
     .segmented-control button { flex: 1; padding: 6px 0; font-size: 13px; font-weight: 600; color: #8e8e93; border-radius: 10px; transition: all 0.3s; }
     .segmented-control button.active { background-color: #ffffff; color: #000000; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -48,7 +47,7 @@
     <div class="px-4">
       <transition name="fade" mode="out-in">
         
-        <!-- ================= 1. 主页面板 ================= -->
+        <!-- 1. 主页面板 -->
         <main v-if="view === 'home'" class="space-y-6">
           <div class="apple-card p-8 text-center relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500"></div>
@@ -73,7 +72,6 @@
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- 错题本专区 -->
             <div class="apple-card p-6">
               <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-gray-800 flex items-center">
@@ -89,7 +87,6 @@
               </div>
             </div>
 
-            <!-- 考试成绩档案 -->
             <div class="apple-card p-6">
               <h3 class="text-lg font-bold text-gray-800 mb-4">📈 考试档案</h3>
               <div v-if="examRecords.length === 0" class="text-center text-sm text-gray-400 py-4">暂无测验记录</div>
@@ -103,45 +100,36 @@
           </div>
         </main>
 
-        <!-- ================= 2. 题库管理视图 (加入错题本Tab) ================= -->
+        <!-- 2. 题库管理 -->
         <main v-else-if="view === 'bank'" class="space-y-4">
           <div class="apple-card p-6">
             <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-              <!-- 切换标签卡 -->
               <div class="segmented-control w-full md:w-64 shrink-0">
                 <button @click="bankTab = 'all'" :class="{'active': bankTab === 'all'}">全部题库 ({{ allQuestions.length }})</button>
                 <button @click="bankTab = 'error'" :class="{'active': bankTab === 'error'}">错题集 ({{ Object.keys(errorBook).length }})</button>
               </div>
               <div class="flex gap-2 w-full md:w-auto justify-end">
-                <button v-if="bankTab === 'error'" @click="removeFromErrorBook" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-yellow-50 text-yellow-600 font-bold text-sm hover:bg-yellow-100 disabled:opacity-30 whitespace-nowrap">
-                  移出错题本
-                </button>
+                <button v-if="bankTab === 'error'" @click="removeFromErrorBook" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-yellow-50 text-yellow-600 font-bold text-sm hover:bg-yellow-100 disabled:opacity-30 whitespace-nowrap">移出错题本</button>
                 <button @click="deleteSelected" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-red-50 text-red-500 font-bold text-sm hover:bg-red-100 disabled:opacity-30 whitespace-nowrap">
                   彻底删除 <span v-if="selectedBankQs.length > 0">({{ selectedBankQs.length }})</span>
                 </button>
               </div>
             </div>
             
-            <div v-if="displayedBankQuestions.length === 0" class="text-center text-gray-400 py-10">
-              {{ bankTab === 'all' ? '题库空空如也' : '太棒了！错题集内暂无题目' }}
-            </div>
+            <div v-if="displayedBankQuestions.length === 0" class="text-center text-gray-400 py-10">{{ bankTab === 'all' ? '题库空空如也' : '错题集内暂无题目' }}</div>
             
             <div class="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
               <label v-for="(q, index) in displayedBankQuestions" :key="q.id" class="flex items-start space-x-3 p-3 border border-gray-100 rounded-xl hover:bg-gray-50 cursor-pointer transition">
                 <input type="checkbox" :value="q.id" v-model="selectedBankQs" class="apple-check mt-1 shrink-0" />
                 <div class="flex-1 overflow-hidden">
                   <div class="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" :class="q.type==='single'?'bg-blue-50 text-blue-600':'bg-purple-50 text-purple-600'">
-                      {{ q.type === 'single' ? '单选' : '多选' }}
-                    </span>
-                    <span v-if="errorBook[q.id]" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-50 text-red-500 flex items-center shrink-0">
-                      错题本 (当前连对 {{errorBook[q.id].streak}}/2 次)
-                    </span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" :class="q.type==='single'?'bg-blue-50 text-blue-600':'bg-purple-50 text-purple-600'">{{ q.type === 'single' ? '单选' : '多选' }}</span>
+                    <span v-if="errorBook[q.id]" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-50 text-red-500 flex items-center shrink-0">错题本 (当前连对 {{errorBook[q.id].streak}}/2 次)</span>
                   </div>
-                  <span class="text-sm font-bold text-gray-700 line-clamp-2 leading-relaxed">{{ q.title }}</span>
+                  <span class="text-sm font-bold text-gray-700 line-clamp-2 leading-relaxed whitespace-pre-wrap">{{ q.title }}</span>
                   <div class="text-xs text-gray-400 mt-1.5 flex flex-wrap gap-3">
                     <span v-if="q.image" class="text-indigo-500 font-bold">🖼️ 附带图片</span>
-                    <span><strong class="text-gray-500">正确答案:</strong> {{ q.answer.map(a => String.fromCharCode(65+a)).join(', ') }}</span>
+                    <span><strong class="text-gray-500">答案:</strong> {{ (q.answer || []).map(a => String.fromCharCode(65+a)).join(', ') }}</span>
                   </div>
                 </div>
               </label>
@@ -149,7 +137,7 @@
           </div>
         </main>
 
-        <!-- ================= 3. 刷题/测验视图 ================= -->
+        <!-- 3. 刷题答题区 -->
         <main v-else-if="view === 'quiz'" class="flex flex-col lg:flex-row gap-6">
           <div class="apple-card p-6 md:p-8 flex-1 flex flex-col">
             <div class="flex justify-between items-center text-xs font-bold text-gray-400 mb-6 uppercase">
@@ -159,41 +147,27 @@
               </div>
               <button @click="quitQuiz" class="hover:text-red-500 transition">退出 ✕</button>
             </div>
-            
-            <h2 class="text-lg font-bold mb-4 leading-relaxed text-gray-800">{{ activeQuestion.title }}</h2>
-            
-            <div v-if="activeQuestion.image" class="mb-6">
-              <img :src="activeQuestion.image" class="max-w-full max-h-64 rounded-xl shadow-sm border border-gray-100 mx-auto" />
-            </div>
+            <h2 class="text-lg font-bold mb-4 leading-relaxed text-gray-800 whitespace-pre-wrap">{{ activeQuestion.title }}</h2>
+            <div v-if="activeQuestion.image" class="mb-6"><img :src="activeQuestion.image" class="max-w-full max-h-64 rounded-xl shadow-sm border border-gray-100 mx-auto" /></div>
 
             <div class="space-y-3 mb-8">
-              <button 
-                v-for="(opt, idx) in activeQuestion.options" :key="idx" 
-                @click="toggleAnswer(idx)" :disabled="isQuestionLocked" 
-                :class="getQuizOptionClass(idx)"
-                class="w-full text-left px-5 py-4 rounded-2xl border-2 text-sm flex items-start transition-all apple-btn relative">
+              <button v-for="(opt, idx) in activeQuestion.options" :key="idx" @click="toggleAnswer(idx)" :disabled="isQuestionLocked" :class="getQuizOptionClass(idx)" class="w-full text-left px-5 py-4 rounded-2xl border-2 text-sm flex items-start transition-all apple-btn relative">
                 <span class="font-bold mr-3 mt-0.5 text-gray-400 w-4">{{ String.fromCharCode(65 + idx) }}</span>
                 <span class="flex-1 font-medium">{{ opt }}</span>
-                <span v-if="isQuestionLocked && activeQuestion.answer.includes(idx)" class="absolute right-4 text-green-500 font-bold text-lg">✓</span>
-                <span v-if="isQuestionLocked && currentAnsRecord.selected.includes(idx) && !activeQuestion.answer.includes(idx)" class="absolute right-4 text-red-500 font-bold text-lg">✕</span>
+                <span v-if="isQuestionLocked && (activeQuestion.answer || []).includes(idx)" class="absolute right-4 text-green-500 font-bold text-lg">✓</span>
+                <span v-if="isQuestionLocked && currentAnsRecord.selected.includes(idx) && !(activeQuestion.answer || []).includes(idx)" class="absolute right-4 text-red-500 font-bold text-lg">✕</span>
               </button>
             </div>
 
             <div v-if="isQuestionLocked" class="mb-6 space-y-3">
-               <div v-if="currentAnsRecord.streakMsg" class="p-3 bg-yellow-50 rounded-xl text-xs font-bold text-yellow-600 border border-yellow-100">
-                  {{ currentAnsRecord.streakMsg }}
-               </div>
-               <div v-if="activeQuestion.analysis" class="p-4 bg-blue-50/50 rounded-xl text-sm text-gray-600 border border-blue-100 leading-relaxed">
-                  <span class="font-bold text-blue-700">解析：</span>{{ activeQuestion.analysis }}
-               </div>
+               <div v-if="currentAnsRecord.streakMsg" class="p-3 bg-yellow-50 rounded-xl text-xs font-bold text-yellow-600 border border-yellow-100">{{ currentAnsRecord.streakMsg }}</div>
+               <div v-if="activeQuestion.analysis" class="p-4 bg-blue-50/50 rounded-xl text-sm text-gray-600 border border-blue-100 leading-relaxed whitespace-pre-wrap"><span class="font-bold text-blue-700">解析：</span>{{ activeQuestion.analysis }}</div>
             </div>
 
             <div class="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
               <button @click="changeQuestion(-1)" :disabled="quizState.currentIdx === 0" class="apple-btn px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold text-sm disabled:opacity-30 hover:bg-gray-200">上一题</button>
-              
               <button v-if="quizState.mode === 'practice' && !isQuestionLocked" @click="checkCurrentQuestion" :disabled="currentAnsRecord.selected.length === 0" class="apple-btn px-6 py-2.5 bg-blue-500 text-white font-semibold text-sm shadow-md disabled:opacity-50">确认答案</button>
               <button v-if="quizState.mode === 'exam' && !quizState.submitted" @click="submitExam" class="apple-btn px-6 py-2.5 bg-indigo-500 text-white font-bold text-sm shadow-md shadow-indigo-200 hover:bg-indigo-600">交卷并出分</button>
-              
               <button @click="changeQuestion(1)" :disabled="quizState.currentIdx === quizState.questions.length - 1" class="apple-btn px-5 py-2.5 bg-gray-800 text-white font-semibold text-sm shadow-md disabled:opacity-30">下一题</button>
             </div>
           </div>
@@ -205,86 +179,79 @@
               <p class="text-[10px] text-gray-500 mt-2">错题已自动收录至错题本</p>
             </div>
             <div class="apple-card p-5">
-              <h3 class="text-sm font-bold text-gray-800 mb-4 flex justify-between">
-                <span>答题卡</span>
-                <span class="text-blue-500">{{ Object.keys(quizState.answers).filter(k=>quizState.answers[k].selected.length>0).length }} / {{ quizState.questions.length }}</span>
-              </h3>
+              <h3 class="text-sm font-bold text-gray-800 mb-4 flex justify-between"><span>答题卡</span><span class="text-blue-500">{{ Object.keys(quizState.answers).filter(k=>quizState.answers[k].selected.length>0).length }} / {{ quizState.questions.length }}</span></h3>
               <div class="grid grid-cols-5 gap-2 max-h-[50vh] overflow-y-auto p-1">
-                <button v-for="(q, idx) in quizState.questions" :key="q.id"
-                  @click="quizState.currentIdx = idx"
-                  :class="getGridClass(q.id, idx)"
-                  class="apple-btn w-10 h-10 flex items-center justify-center text-xs font-bold border-2 transition-all">
-                  {{ idx + 1 }}
-                </button>
-              </div>
-              <div class="mt-4 flex flex-wrap gap-2 text-[10px] text-gray-400 justify-center">
-                <div class="flex items-center"><span class="w-2 h-2 rounded-full bg-gray-100 border mr-1"></span>未答</div>
-                <div class="flex items-center"><span class="w-2 h-2 rounded-full bg-blue-500 mr-1"></span>已答</div>
-                <div v-if="quizState.submitted || quizState.mode==='practice'" class="flex items-center"><span class="w-2 h-2 rounded-full bg-green-500 mr-1"></span>正确</div>
-                <div v-if="quizState.submitted || quizState.mode==='practice'" class="flex items-center"><span class="w-2 h-2 rounded-full bg-red-500 mr-1"></span>错误</div>
-                <div v-if="quizState.submitted || quizState.mode==='practice'" class="flex items-center"><span class="w-2 h-2 rounded-full bg-yellow-400 mr-1"></span>漏选</div>
+                <button v-for="(q, idx) in quizState.questions" :key="q.id" @click="quizState.currentIdx = idx" :class="getGridClass(q.id, idx)" class="apple-btn w-10 h-10 flex items-center justify-center text-xs font-bold border-2 transition-all">{{ idx + 1 }}</button>
               </div>
             </div>
           </div>
         </main>
 
-        <!-- ================= 4. 添加题目 (统一面板) ================= -->
+        <!-- 4. 添加题目区 -->
         <main v-else-if="view === 'add'" class="space-y-6">
           <div class="apple-card p-6 md:p-8 space-y-5">
             <div class="flex flex-col md:flex-row justify-between items-center border-b border-gray-100 pb-4 gap-4">
               <h2 class="text-xl font-bold text-gray-900">📥 添加题目</h2>
               <div class="segmented-control w-full md:w-64">
-                <button @click="addMode = 'ai'" :class="{'active': addMode === 'ai'}">AI 智能提取</button>
-                <button @click="addMode = 'manual'" :class="{'active': addMode === 'manual'}">手动录入</button>
+                <button @click="addMode = 'manual'" :class="{'active': addMode === 'manual'}">手动录入 (含自动提取)</button>
+                <button @click="addMode = 'ai'" :class="{'active': addMode === 'ai'}">AI 批量提取</button>
               </div>
             </div>
             
-            <div v-if="addMode === 'ai'" class="space-y-5 fade-enter-active">
-              <div @click="$refs.fileInput.click()" class="border-2 border-dashed border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 rounded-2xl p-6 text-center cursor-pointer transition relative">
-                <input ref="fileInput" type="file" accept="image/*" @change="handleFileUpload" class="hidden" />
-                <div v-if="!imagePreview">
-                  <div class="text-3xl mb-2 text-indigo-400">📸</div>
-                  <p class="text-sm font-bold text-indigo-600">在此按 Ctrl + V 粘贴试卷截图</p>
-                </div>
-                <div v-else class="relative inline-block" @click.stop>
-                  <img :src="imagePreview" class="max-h-48 mx-auto rounded-xl shadow" />
-                  <button @click="clearImage" class="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm shadow">✕</button>
-                </div>
-              </div>
-              <textarea v-model="rawText" rows="3" placeholder="也可以粘贴长串纯文本题目，AI会自动切分..." class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
-              <button @click="processWithAI" :disabled="loading || (!imagePreview && !rawText.trim())" class="apple-btn w-full py-3.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm shadow-md disabled:opacity-50">
-                {{ loading ? 'AI 极速拆题中...' : '开始智能提取' }}
-              </button>
-              <div v-if="importLog" class="text-xs font-bold text-center" :class="importError ? 'text-red-500' : 'text-green-600'">{{ importLog }}</div>
-            </div>
-
+            <!-- 手动录入 & 本地自动提取 -->
             <div v-if="addMode === 'manual'" class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-enter-active">
               <div class="space-y-4">
-                <select v-model="manualQ.type" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="single">单选题</option><option value="multiple">多选题</option>
-                </select>
-                <textarea v-model="manualQ.title" rows="4" placeholder="在此输入题目文字..." class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
-                <div @click="$refs.manualFileInput.click()" class="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 rounded-xl p-4 text-center cursor-pointer relative min-h-[120px] flex items-center justify-center">
+                <div>
+                  <label class="block text-xs font-bold text-gray-500 mb-1 flex justify-between items-center">
+                    <span>⚡ 快捷粘贴 (0 消耗本地提取)</span>
+                    <button @click="quickParseManual" class="text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[10px] shadow-sm">一键拆分至下方 &darr;</button>
+                  </label>
+                  <textarea v-model="manualQ.rawPaste" @paste="handleQuickPaste" rows="4" placeholder="支持直接将标准题目粘贴至此 (格式含 A. B. 及 答案)，按 Ctrl+V 后将瞬间自动填充！" class="w-full p-3 bg-blue-50/30 border border-blue-100 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition"></textarea>
+                </div>
+                
+                <div class="flex space-x-3">
+                  <select v-model="manualQ.type" class="w-2/5 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="single">单选题</option><option value="multiple">多选题</option>
+                  </select>
+                  <input v-model="manualQ.title" placeholder="题目正文..." class="w-3/5 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                
+                <div @click="$refs.manualFileInput.click()" class="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 rounded-xl p-4 text-center cursor-pointer relative min-h-[100px] flex items-center justify-center">
                   <input ref="manualFileInput" type="file" accept="image/*" @change="handleManualUpload" class="hidden" />
-                  <div v-if="!manualQ.image" class="text-gray-400 text-xs font-bold"><span class="text-2xl block mb-1">🖼️</span>点击或粘贴附加图片</div>
+                  <div v-if="!manualQ.image" class="text-gray-400 text-xs font-bold"><span class="text-2xl block mb-1">🖼️</span>点击或粘贴图片 (仅图文组合题上传)</div>
                   <div v-else class="relative" @click.stop>
-                    <img :src="manualQ.image" class="max-h-28 rounded shadow-sm" />
+                    <img :src="manualQ.image" class="max-h-24 rounded shadow-sm" />
                     <button @click="manualQ.image=''" class="absolute -top-2 -right-2 bg-gray-800 text-white rounded-full w-6 h-6 text-xs">✕</button>
                   </div>
                 </div>
               </div>
+
               <div class="space-y-4">
-                <label class="block text-xs font-bold text-gray-500 mb-1">选项设置 (勾选作为正确答案)</label>
+                <label class="block text-xs font-bold text-gray-500 mb-1">选项设置 (勾选即为正确答案)</label>
                 <div class="space-y-2">
                   <div v-for="(opt, idx) in manualQ.options" :key="idx" class="flex items-center space-x-2">
                     <input :type="manualQ.type === 'single' ? 'radio' : 'checkbox'" name="m_ans" :checked="manualQ.answer.includes(idx)" @change="toggleManualAnswer(idx)" :class="manualQ.type==='single'?'apple-radio':'apple-check'" class="w-5 h-5 text-blue-500 cursor-pointer" />
                     <span class="font-bold text-gray-400 w-5">{{ String.fromCharCode(65 + idx) }}.</span>
-                    <input v-model="manualQ.options[idx]" placeholder="选项内容" class="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input v-model="manualQ.options[idx]" placeholder="选项内容" class="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
                 </div>
-                <textarea v-model="manualQ.analysis" rows="2" placeholder="解析说明 (可选)" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none mt-4"></textarea>
-                <button @click="commitManualQuestion" class="apple-btn w-full py-3 bg-blue-500 text-white font-bold text-sm shadow-md hover:bg-blue-600 mt-2">保存到题库</button>
+                <textarea v-model="manualQ.analysis" rows="2" placeholder="解析说明 (可选)" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none mt-2"></textarea>
+                <button @click="commitManualQuestion" class="apple-btn w-full py-3 bg-blue-500 text-white font-bold text-sm shadow-md hover:bg-blue-600 mt-2">💾 保存到题库</button>
               </div>
+            </div>
+
+            <!-- AI 批量提取 -->
+            <div v-if="addMode === 'ai'" class="space-y-5 fade-enter-active">
+              <div @click="$refs.fileInput.click()" class="border-2 border-dashed border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 rounded-2xl p-6 text-center cursor-pointer transition relative">
+                <input ref="fileInput" type="file" accept="image/*" @change="handleFileUpload" class="hidden" />
+                <div v-if="!imagePreview"><div class="text-3xl mb-2 text-indigo-400">📸</div><p class="text-sm font-bold text-indigo-600">在此按 Ctrl + V 粘贴试卷截图</p></div>
+                <div v-else class="relative inline-block" @click.stop><img :src="imagePreview" class="max-h-48 mx-auto rounded-xl shadow" /><button @click="clearImage" class="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm">✕</button></div>
+              </div>
+              <textarea v-model="rawText" rows="3" placeholder="粘贴长串纯文本题目，支持大批量自动切分..." class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+              <button @click="processWithAI" :disabled="loading || (!imagePreview && !rawText.trim())" class="apple-btn w-full py-3.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm shadow-md disabled:opacity-50">
+                {{ loading ? 'AI 极速拆题中...' : '🤖 调用 AI 批量提取' }}
+              </button>
+              <div v-if="importLog" class="text-xs font-bold text-center" :class="importError ? 'text-red-500' : 'text-green-600'">{{ importLog }}</div>
             </div>
           </div>
 
@@ -296,9 +263,7 @@
             </div>
             <div v-for="(q, qIndex) in previewQuestions" :key="qIndex" class="p-5 bg-gray-50 border border-gray-100 rounded-2xl space-y-4 relative">
               <button @click="previewQuestions.splice(qIndex, 1)" class="absolute top-4 right-4 text-red-400 hover:text-red-600 text-xs font-bold">删除</button>
-              <select v-model="q.type" class="p-1.5 bg-white border border-gray-200 rounded text-xs font-bold text-gray-600 outline-none">
-                <option value="single">单选题</option><option value="multiple">多选题</option>
-              </select>
+              <select v-model="q.type" class="p-1.5 bg-white border border-gray-200 rounded text-xs font-bold text-gray-600 outline-none"><option value="single">单选题</option><option value="multiple">多选题</option></select>
               <input v-model="q.title" placeholder="题目正文" class="w-full font-bold p-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               <div class="space-y-2">
                 <div v-for="(opt, oIndex) in q.options" :key="oIndex" class="flex items-center space-x-2">
@@ -312,27 +277,18 @@
           </div>
         </main>
 
-        <!-- ================= 5. 设置面板 ================= -->
+        <!-- 5. 设置面板 -->
         <main v-else-if="view === 'settings'" class="space-y-6">
           <div class="apple-card p-6 md:p-8 space-y-5">
             <h2 class="text-xl font-bold text-gray-900 border-b border-gray-100 pb-4">⚙️ 系统设置</h2>
             <div class="space-y-4 pt-2">
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 接口端点</label>
-                <input v-model="config.endpoint" type="text" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 密钥 (Key)</label>
-                <input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">大模型名称 (必须支持视觉)</label>
-                <input v-model="config.model" type="text" placeholder="推荐: gpt-4o-mini" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
+              <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 接口端点</label><input v-model="config.endpoint" type="text" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 密钥 (Key)</label><input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">大模型名称</label><input v-model="config.model" type="text" placeholder="默认: gpt-5.6-terra" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
             </div>
             <div class="flex gap-3 pt-4 border-b border-gray-100 pb-6">
               <button @click="saveSettings" class="apple-btn px-6 py-2.5 bg-gray-900 text-white text-sm font-semibold shadow-md">保存配置</button>
-              <button @click="testConnection" :disabled="testLoading" class="apple-btn px-6 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200">测试网络</button>
+              <button @click="testConnection" :disabled="testLoading" class="apple-btn px-6 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 disabled:opacity-50">{{ testLoading ? '正在测试...' : '测试连接' }}</button>
             </div>
             <div v-if="diagLog" class="p-4 bg-gray-900 text-green-400 rounded-2xl text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{{ diagLog }}</div>
           </div>
@@ -360,78 +316,83 @@
     createApp({
       setup() {
         const view = ref('home'); 
-        const addMode = ref('ai'); 
-        const bankTab = ref('all'); // 'all' or 'error'
+        const addMode = ref('manual'); 
+        const bankTab = ref('all'); 
         
         const allQuestions = ref([]);
-        const errorBook = ref({}); // { qId: { streak: number } }
-        const examRecords = ref([]); // [{ date, score }]
+        const errorBook = ref({}); 
+        const examRecords = ref([]); 
         const selectedBankQs = ref([]); 
         
-        // --- 刷题测验系统 ---
-        const quizState = ref({
-            mode: 'practice', source: 'all',
-            questions: [], currentIdx: 0, answers: {}, submitted: false, score: 0
-        });
-
-        const activeQuestion = computed(() => quizState.value.questions[quizState.value.currentIdx] || {});
-        const currentAnsRecord = computed(() => {
-            const id = activeQuestion.value.id;
-            if(!quizState.value.answers[id]) quizState.value.answers[id] = { selected: [], checked: false, isCorrect: false, score: 0, streakMsg: '' };
-            return quizState.value.answers[id];
-        });
+        const quizState = ref({ mode: 'practice', source: 'all', questions: [], currentIdx: 0, answers: {}, submitted: false, score: 0 });
+        const activeQuestion = computed(() => quizState.value.questions[quizState.value.currentIdx] || { id: '', title: '', options: [], answer: [] });
+        const currentAnsRecord = computed(() => { const id = activeQuestion.value.id; if(!quizState.value.answers[id]) quizState.value.answers[id] = { selected: [], checked: false, isCorrect: false, score: 0, streakMsg: '' }; return quizState.value.answers[id]; });
         const isQuestionLocked = computed(() => quizState.value.submitted || currentAnsRecord.value.checked);
+        const displayedBankQuestions = computed(() => { if (bankTab.value === 'error') return allQuestions.value.filter(q => errorBook.value[q.id]); return allQuestions.value; });
+        const singleCount = computed(() => allQuestions.value.filter(q => q.type === 'single').length);
+        const multiCount = computed(() => allQuestions.value.filter(q => q.type === 'multiple').length);
 
-        // --- 题库显示过滤 ---
-        const displayedBankQuestions = computed(() => {
-            if (bankTab.value === 'error') return allQuestions.value.filter(q => errorBook.value[q.id]);
-            return allQuestions.value;
-        });
+        const normalizeQuestion = (raw) => {
+          const source = raw && typeof raw === 'object' ? raw : {};
+          const options = Array.isArray(source.options)
+            ? source.options.map(option => String(option ?? '').trim()).filter(Boolean).slice(0, 6)
+            : [];
+          const values = Array.isArray(source.answer) ? source.answer : [source.answer];
+          const answer = [];
+          values.forEach(value => {
+            if (Number.isInteger(value)) answer.push(value);
+            else if (typeof value === 'string') {
+              const letters = value.toUpperCase().match(/[A-F]/g);
+              if (letters) letters.forEach(letter => answer.push(letter.charCodeAt(0) - 65));
+              else (value.match(/\d+/g) || []).forEach(number => answer.push(Number(number)));
+            }
+          });
+          const validAnswer = [...new Set(answer)].filter(index => index >= 0 && index < options.length);
+          return {
+            id: String(source.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+            type: source.type === 'multiple' || validAnswer.length > 1 ? 'multiple' : 'single',
+            title: String(source.title ?? '').trim(),
+            options,
+            answer: validAnswer,
+            analysis: String(source.analysis ?? ''),
+            image: String(source.image ?? '')
+          };
+        };
+        const normalizeQuestionList = (raw) => Array.isArray(raw)
+          ? raw.map(normalizeQuestion).filter(question => (question.title || question.image) && question.options.length >= 2 && question.answer.length > 0)
+          : [];
 
-        watch(bankTab, () => selectedBankQs.value = []); // 切换tab清空勾选
+        watch(bankTab, () => selectedBankQs.value = []); 
 
-        // --- AI 导入状态 ---
         const previewQuestions = ref([]); 
-        const loading = ref(false);
-        const importLog = ref('');
-        const importError = ref(false);
-        const rawText = ref('');
-        const imagePreview = ref('');
-        const imageBase64 = ref('');
-
-        // --- 手动加题状态 ---
-        const manualQ = ref({ type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '' });
-
-        // --- 设置状态 ---
-        const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-4o-mini' });
-        const testLoading = ref(false);
-        const diagLog = ref('');
-
-        const singleCount = computed(() => allQuestions.value.filter(q=>q.type==='single').length);
-        const multiCount = computed(() => allQuestions.value.filter(q=>q.type==='multiple').length);
+        const loading = ref(false); const importLog = ref(''); const importError = ref(false);
+        const rawText = ref(''); const imagePreview = ref(''); const imageBase64 = ref('');
+        const manualQ = ref({ type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '', rawPaste: '' });
+        
+        const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra' });
+        const testLoading = ref(false); const diagLog = ref('');
 
         onMounted(() => {
-          allQuestions.value = JSON.parse(localStorage.getItem('airquiz_db_v3')) || [];
-          errorBook.value = JSON.parse(localStorage.getItem('airquiz_err_v3')) || {};
-          examRecords.value = JSON.parse(localStorage.getItem('airquiz_hist_v3')) || [];
-          const savedConf = localStorage.getItem('airquiz_cfg_v3');
-          if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
+          try { allQuestions.value = normalizeQuestionList(JSON.parse(localStorage.getItem('airquiz_db_v3'))); } catch (e) { allQuestions.value = []; }
+          try { errorBook.value = JSON.parse(localStorage.getItem('airquiz_err_v3')) || {}; } catch (e) { errorBook.value = {}; }
+          try { examRecords.value = JSON.parse(localStorage.getItem('airquiz_hist_v3')) || []; } catch (e) { examRecords.value = []; }
+          try {
+            const savedConf = localStorage.getItem('airquiz_cfg_v3');
+            if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
+          } catch (e) {}
           window.addEventListener('paste', handleGlobalPaste);
         });
 
         onUnmounted(() => window.removeEventListener('paste', handleGlobalPaste));
 
-        const saveData = () => {
-            localStorage.setItem('airquiz_db_v3', JSON.stringify(allQuestions.value));
-            localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value));
-            localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value));
-        };
+        const saveData = () => { localStorage.setItem('airquiz_db_v3', JSON.stringify(allQuestions.value)); localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value)); localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value)); };
         const saveSettings = () => { localStorage.setItem('airquiz_cfg_v3', JSON.stringify(config.value)); alert('保存成功'); };
 
-        const isDuplicate = (title) => {
-            const norm = t => t.replace(/\s+/g, '').toLowerCase();
-            const nt = norm(title);
-            return allQuestions.value.some(q => norm(q.title) === nt);
+        const isDuplicate = (title) => { 
+            if (!title) return false;
+            const norm = t => String(t).replace(/\s+/g, '').toLowerCase(); 
+            const nt = norm(title); 
+            return allQuestions.value.some(q => q.title && norm(q.title) === nt); 
         };
 
         const handleGlobalPaste = (e) => {
@@ -439,8 +400,7 @@
           const items = (e.clipboardData || e.originalEvent.clipboardData).items;
           for (let item of items) {
             if (item.type.indexOf('image') !== -1) {
-              e.preventDefault(); 
-              const file = item.getAsFile();
+              e.preventDefault(); const file = item.getAsFile();
               if(addMode.value === 'manual') processBase64(file, (data) => manualQ.value.image = data);
               else processBase64(file, (data, b64) => { imagePreview.value = data; imageBase64.value = b64; });
               break;
@@ -456,66 +416,88 @@
           reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
-              const canvas = document.createElement('canvas');
-              let w = img.width, h = img.height;
+              const canvas = document.createElement('canvas'); let w = img.width, h = img.height;
               if (w > 1000 || h > 1000) { if (w > h) { h = Math.round((h * 1000) / w); w = 1000; } else { w = Math.round((w * 1000) / h); h = 1000; } }
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
+              canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
               callback(canvas.toDataURL('image/jpeg', 0.85), canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
             }; img.src = e.target.result;
           }; reader.readAsDataURL(file);
         };
         const clearImage = () => { imagePreview.value = ''; imageBase64.value = ''; };
 
+        const handleQuickPaste = () => { setTimeout(quickParseManual, 50); };
+        const quickParseManual = () => {
+            const text = manualQ.value.rawPaste; if (!text) return;
+            let type = manualQ.value.type || 'single';
+            if (/[多双]选/.test(text)) type = 'multiple';
+
+            let lines = text.split('\n').map(l => l.trim()).filter(l => l);
+            let parsedTitle = ''; let parsedOptions = []; let parsedAnswers = []; let parsedAnalysis = '';
+            let currentSec = 'title';
+
+            for (let line of lines) {
+                let optMatch = line.match(/^([A-F])[.、，:：\s]\s*(.+)/i);
+                let ansMatch = line.match(/(?:正确答案|标准答案|答案)[：:\s]*([A-F,\s、]+)/i);
+                let anaMatch = line.match(/(?:解析|答案解析|题目解析|试题详解)[：:\s]*(.*)/i);
+
+                if (ansMatch) {
+                    let ansStr = ansMatch[1].toUpperCase();
+                    ['A','B','C','D','E','F'].forEach((char, i) => { if (ansStr.includes(char)) parsedAnswers.push(i); });
+                    if (parsedAnswers.length > 1) type = 'multiple';
+                    currentSec = 'done';
+                } else if (anaMatch) { parsedAnalysis = anaMatch[1]; currentSec = 'analysis';
+                } else if (optMatch) { parsedOptions.push(optMatch[2].trim()); currentSec = 'options';
+                } else {
+                    if (currentSec === 'title') parsedTitle += (parsedTitle ? '\n' : '') + line;
+                    else if (currentSec === 'analysis') parsedAnalysis += '\n' + line;
+                    else if (currentSec === 'options' && parsedOptions.length > 0) parsedOptions[parsedOptions.length - 1] += ' ' + line;
+                }
+            }
+            parsedTitle = parsedTitle.replace(/^\[.*?题\]\s*/, '');
+            if (parsedTitle) manualQ.value.title = parsedTitle;
+            if (parsedOptions.length > 0) { while (parsedOptions.length < 4) parsedOptions.push(''); manualQ.value.options = parsedOptions.slice(0, 4); }
+            if (parsedAnswers.length > 0) manualQ.value.answer = parsedAnswers;
+            if (parsedAnalysis) manualQ.value.analysis = parsedAnalysis;
+            manualQ.value.type = type; manualQ.value.rawPaste = ''; 
+        };
+
         const processErrorBookLogic = (qId, isCorrect, ansObj) => {
             if (isCorrect === true) {
                 if (errorBook.value[qId]) {
                     errorBook.value[qId].streak += 1;
-                    if (errorBook.value[qId].streak >= 2) {
-                        delete errorBook.value[qId];
-                        ansObj.streakMsg = '🎉 连续做对2次，已自动移出错题本！';
-                    } else ansObj.streakMsg = '👍 答对了！再做对1次即可移出错题本。';
+                    if (errorBook.value[qId].streak >= 2) { delete errorBook.value[qId]; ansObj.streakMsg = '🎉 连续做对2次，已自动移出错题本！'; } 
+                    else ansObj.streakMsg = '👍 答对了！再做对1次即可移出错题本。';
                 }
-            } else {
-                errorBook.value[qId] = { streak: 0 };
-                ansObj.streakMsg = '⚠️ 回答有误，已记入错题本。';
-            }
+            } else { errorBook.value[qId] = { streak: 0 }; ansObj.streakMsg = '⚠️ 回答有误，已记入错题本。'; }
         };
 
         const startQuiz = (mode, source, count) => {
           let pool = source === 'error' ? allQuestions.value.filter(q => errorBook.value[q.id]) : [...allQuestions.value];
           if (pool.length === 0) return alert(source === 'error' ? '错题本是空的，太棒了！' : '题库为空！');
           if (count !== 'all') { pool = pool.sort(() => 0.5 - Math.random()); if (count < pool.length) pool = pool.slice(0, count); }
-          quizState.value = { mode, source, questions: pool, currentIdx: 0, answers: {}, submitted: false, score: 0 };
-          view.value = 'quiz';
+          quizState.value = { mode, source, questions: pool, currentIdx: 0, answers: {}, submitted: false, score: 0 }; view.value = 'quiz';
         };
 
         const startExam = () => {
             const singles = allQuestions.value.filter(q => q.type === 'single').sort(() => 0.5 - Math.random());
             const multis = allQuestions.value.filter(q => q.type === 'multiple').sort(() => 0.5 - Math.random());
             if (singles.length < 35 || multis.length < 25) return alert(`⚠️ 题库数量不足！\n需 35单选+25多选\n当前有: ${singles.length}单选 + ${multis.length}多选`);
-            quizState.value = { mode: 'exam', source: 'all', questions: [...singles.slice(0, 35), ...multis.slice(0, 25)], currentIdx: 0, answers: {}, submitted: false, score: 0 };
-            view.value = 'quiz';
+            quizState.value = { mode: 'exam', source: 'all', questions: [...singles.slice(0, 35), ...multis.slice(0, 25)], currentIdx: 0, answers: {}, submitted: false, score: 0 }; view.value = 'quiz';
         };
 
         const quitQuiz = () => { if(confirm('确定退出吗？进度不保存。')) { view.value = 'home'; saveData(); } };
         const changeQuestion = (step) => { quizState.value.currentIdx += step; };
-
         const toggleAnswer = (idx) => {
             if(isQuestionLocked.value) return;
-            const q = activeQuestion.value;
-            let sel = currentAnsRecord.value.selected;
+            const q = activeQuestion.value; let sel = currentAnsRecord.value.selected;
             if(q.type === 'single') currentAnsRecord.value.selected = [idx];
-            else {
-                if(sel.includes(idx)) currentAnsRecord.value.selected = sel.filter(x => x !== idx);
-                else currentAnsRecord.value.selected.push(idx);
-            }
+            else { if(sel.includes(idx)) currentAnsRecord.value.selected = sel.filter(x => x !== idx); else currentAnsRecord.value.selected.push(idx); }
         };
 
         const evaluateQuestion = (q, ans) => {
-            const isPerfect = ans.selected.length === q.answer.length && ans.selected.every(x => q.answer.includes(x));
-            const hasWrong = ans.selected.some(x => !q.answer.includes(x));
+            const safeAnswer = Array.isArray(q.answer) ? q.answer : [];
+            const isPerfect = ans.selected.length === safeAnswer.length && ans.selected.every(x => safeAnswer.includes(x));
+            const hasWrong = ans.selected.some(x => !safeAnswer.includes(x));
             if (isPerfect) { ans.isCorrect = true; ans.score = 2; }
             else if (!hasWrong && ans.selected.length > 0) { ans.isCorrect = 'partial'; ans.score = 1; } 
             else { ans.isCorrect = false; ans.score = 0; }
@@ -525,8 +507,7 @@
         const checkCurrentQuestion = () => {
             const q = activeQuestion.value; const ans = currentAnsRecord.value;
             evaluateQuestion(q, ans); ans.checked = true;
-            processErrorBookLogic(q.id, ans.isCorrect, ans);
-            saveData(); 
+            processErrorBookLogic(q.id, ans.isCorrect, ans); saveData(); 
         };
 
         const submitExam = () => {
@@ -538,14 +519,11 @@
                 processErrorBookLogic(q.id, ans.isCorrect, ans); total += ans.score;
             });
             quizState.value.score = total; quizState.value.submitted = true; quizState.value.currentIdx = 0; 
-            examRecords.value.unshift({ date: new Date().toLocaleString(), score: total });
-            saveData();
+            examRecords.value.unshift({ date: new Date().toLocaleString(), score: total }); saveData();
         };
 
         const getQuizOptionClass = (idx) => {
-            const ans = currentAnsRecord.value;
-            const isSel = ans.selected.includes(idx);
-            const isReal = activeQuestion.value.answer.includes(idx);
+            const ans = currentAnsRecord.value; const isSel = ans.selected.includes(idx); const isReal = (activeQuestion.value.answer || []).includes(idx);
             if(!isQuestionLocked.value) return isSel ? 'border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500' : 'border-gray-200 hover:bg-gray-50';
             if(isReal && isSel) return 'border-green-500 bg-green-50 text-green-700 shadow-sm font-bold';
             if(isReal && !isSel) return 'border-green-500 border-dashed bg-white text-green-600'; 
@@ -554,8 +532,7 @@
         };
 
         const getGridClass = (qId, idx) => {
-            const isCurr = quizState.value.currentIdx === idx;
-            const ans = quizState.value.answers[qId];
+            const isCurr = quizState.value.currentIdx === idx; const ans = quizState.value.answers[qId];
             let base = isCurr ? 'ring-2 ring-gray-400 scale-110 z-10 ' : '';
             if(!ans || ans.selected.length === 0) return base + 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50';
             if(!ans.checked) return base + 'bg-blue-500 border-blue-600 text-white';
@@ -565,17 +542,15 @@
         };
 
         const deleteSelected = () => {
-            if(confirm(`确定删除选中的 ${selectedBankQs.value.length} 题吗？`)) {
+            if(confirm(`确定彻底删除选中的 ${selectedBankQs.value.length} 题吗？`)) {
                 allQuestions.value = allQuestions.value.filter(q => !selectedBankQs.value.includes(q.id));
-                selectedBankQs.value.forEach(id => delete errorBook.value[id]);
-                selectedBankQs.value = []; saveData();
+                selectedBankQs.value.forEach(id => delete errorBook.value[id]); selectedBankQs.value = []; saveData();
             }
         };
 
         const removeFromErrorBook = () => {
             if(confirm(`确定将选中的 ${selectedBankQs.value.length} 题移出错题本吗？`)) {
-                selectedBankQs.value.forEach(id => delete errorBook.value[id]);
-                selectedBankQs.value = []; saveData();
+                selectedBankQs.value.forEach(id => delete errorBook.value[id]); selectedBankQs.value = []; saveData();
             }
         };
 
@@ -591,9 +566,8 @@
             if(!manualQ.value.title.trim() && !manualQ.value.image) return alert('题干和图片不能都为空');
             if(manualQ.value.answer.length === 0) return alert('必须设置答案');
             if(isDuplicate(manualQ.value.title)) if(!confirm('可能存在重复的题目，强制添加吗？')) return;
-            allQuestions.value.unshift({ ...manualQ.value, id: Date.now() + '' }); saveData();
-            alert('🎉 创建成功！');
-            manualQ.value = { type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '' };
+            allQuestions.value.unshift(normalizeQuestion({ ...manualQ.value, id: Date.now() + '' })); saveData();
+            alert('🎉 创建成功！'); manualQ.value = { type: 'single', title: '', options: ['','','',''], answer: [], analysis: '', image: '', rawPaste: '' };
         };
 
         const processWithAI = async () => {
@@ -619,11 +593,7 @@
             if(start === -1 || end === -1) throw new Error("返回格式不合法");
             
             let parsed = JSON.parse(cleaned.substring(start, end + 1));
-            parsed = parsed.map(q => {
-                if(!q.answer || typeof q.answer === 'number') q.answer = [q.answer || 0];
-                if(!q.type) q.type = q.answer.length > 1 ? 'multiple' : 'single';
-                return { ...q, id: Date.now() + Math.random()+'' };
-            });
+            parsed = normalizeQuestionList(parsed);
             if (parsed.length > 0) { previewQuestions.value = parsed; importLog.value = `✅ 识别了 ${parsed.length} 题`; } 
             else throw new Error("提取为空");
           } catch (err) { importError.value = true; importLog.value = `❌ 失败: ${err.message}`; } 
@@ -632,49 +602,124 @@
 
         const togglePreviewAnswer = (q, idx) => {
             if(q.type === 'single') q.answer = [idx];
-            else {
-                if(q.answer.includes(idx)) q.answer = q.answer.filter(x => x !== idx);
-                else q.answer.push(idx);
-            }
+            else { if(q.answer.includes(idx)) q.answer = q.answer.filter(x => x !== idx); else q.answer.push(idx); }
         };
 
         const commitQuestions = () => {
           let addCount = 0; let dupCount = 0;
           previewQuestions.value.forEach(pq => {
-              if (isDuplicate(pq.title)) dupCount++;
-              else { allQuestions.value.unshift(pq); addCount++; }
-          });
-          saveData(); 
-          alert(`🎉 成功添加 ${addCount} 题` + (dupCount > 0 ? `，自动过滤了 ${dupCount} 道重复题。` : '。'));
+              const question = normalizeQuestion(pq);
+              if (isDuplicate(question.title)) dupCount++; else { allQuestions.value.unshift(question); addCount++; }
+          }); saveData(); 
+          alert(`🎉 成功添加 ${addCount} 题` + (dupCount > 0 ? `，过滤了 ${dupCount} 道重复题。` : '。'));
           previewQuestions.value = []; rawText.value = ''; clearImage(); view.value = 'bank'; 
         };
 
-        const testConnection = async () => { /* 代理测通略 */ };
+        const testConnection = async () => {
+          const endpoint = config.value.endpoint.trim();
+          const apiKey = config.value.apiKey.trim();
+          const model = config.value.model.trim();
+          if (!endpoint || !apiKey || !model) {
+            diagLog.value = '❌ 请先填写 API 接口端点、API Key 和模型名称。';
+            return;
+          }
+
+          testLoading.value = true;
+          const startedAt = new Date().toLocaleTimeString('zh-CN');
+          diagLog.value = `[${startedAt}] 正在通过代理连接 API...\n端点: ${endpoint}\n模型: ${model}`;
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), 25000);
+
+          try {
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
+            const response = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content: '请仅回复 OK' }],
+                max_tokens: 8,
+                temperature: 0
+              }),
+              signal: controller.signal
+            });
+            const responseText = await response.text();
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status} ${response.statusText}\n${responseText.slice(0, 600)}`);
+            }
+
+            let data;
+            try { data = JSON.parse(responseText); }
+            catch (error) { throw new Error(`HTTP ${response.status}，但返回内容不是 JSON：\n${responseText.slice(0, 600)}`); }
+            const reply = data?.choices?.[0]?.message?.content;
+            if (!reply) throw new Error(`HTTP ${response.status}，接口未返回 choices[0].message.content。\n${responseText.slice(0, 600)}`);
+
+            diagLog.value = `✅ 连接成功\n时间: ${new Date().toLocaleTimeString('zh-CN')}\nHTTP: ${response.status} ${response.statusText}\n模型: ${data.model || model}\n响应: ${String(reply).trim().slice(0, 200)}`;
+          } catch (error) {
+            const message = error.name === 'AbortError'
+              ? '请求超时（25 秒）。请检查网络、代理服务或接口地址。'
+              : error.message;
+            diagLog.value = `❌ 连接失败\n时间: ${new Date().toLocaleTimeString('zh-CN')}\n端点: ${endpoint}\n模型: ${model}\n错误: ${message}`;
+          } finally {
+            window.clearTimeout(timeout);
+            testLoading.value = false;
+          }
+        };
         
         const exportData = () => {
-          const exportObj = { db: allQuestions.value, err: errorBook.value, hist: examRecords.value };
-          const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = `旺旺刷题_数据备份_${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url);
+          try {
+              if (allQuestions.value.length === 0) return alert('题库为空，无需导出');
+              const exportObj = { db: allQuestions.value, err: errorBook.value, hist: examRecords.value };
+              const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a'); 
+              a.href = url; 
+              a.download = `旺旺刷题_备份_${new Date().toISOString().slice(0, 10)}.json`; 
+              document.body.appendChild(a);
+              a.click(); 
+              document.body.removeChild(a);
+              window.URL.revokeObjectURL(url);
+          } catch(e) { alert("导出失败：" + e.message); }
         };
+
         const importData = (e) => {
           const file = e.target.files[0]; if (!file) return;
           const reader = new FileReader();
           reader.onload = (evt) => {
             try {
               const data = JSON.parse(evt.target.result);
-              if (data.db && Array.isArray(data.db)) {
-                allQuestions.value = data.db; errorBook.value = data.err || {}; examRecords.value = data.hist || [];
-                saveData(); alert(`导入成功！`);
-              }
-            } catch (err) { alert('格式不对'); }
-          }; reader.readAsText(file); e.target.value = '';
-        };
-        const clearAllData = () => {
-            if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); }
+              let importedQs = []; let importedErr = {}; let importedHist = [];
+
+              if (Array.isArray(data)) { importedQs = data; } 
+              else if (data.db && Array.isArray(data.db)) { importedQs = data.db; importedErr = data.err || {}; importedHist = data.hist || []; } 
+              else throw new Error('格式不对');
+
+              const normalizedQuestions = normalizeQuestionList(importedQs);
+              let addCount = 0;
+              normalizedQuestions.forEach(question => {
+                  if (!isDuplicate(question.title)) {
+                      allQuestions.value.push(question); addCount++;
+                  }
+              });
+
+              const validIds = new Set(allQuestions.value.map(question => String(question.id)));
+              const safeErrors = Object.fromEntries(Object.entries(importedErr || {}).filter(([id, value]) => validIds.has(String(id)) && value && typeof value === 'object'));
+              errorBook.value = { ...errorBook.value, ...safeErrors };
+              examRecords.value = [...examRecords.value, ...(Array.isArray(importedHist) ? importedHist.filter(record => record && typeof record === 'object') : [])];
+              saveData();
+              const skippedCount = importedQs.length - normalizedQuestions.length;
+              alert(`🎉 导入成功！新增 ${addCount} 题，跳过重复题 ${normalizedQuestions.length - addCount} 题${skippedCount > 0 ? `，跳过格式不完整题目 ${skippedCount} 题` : ''}。`);
+            } catch (err) { alert('导入失败: ' + err.message); } 
+            finally { e.target.value = ''; }
+          }; reader.readAsText(file); 
         };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, imagePreview, manualQ, config, handleGlobalPaste, handleFileUpload, handleManualUpload, clearImage, deleteSelected, removeFromErrorBook, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection };
+        const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
+
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, imagePreview, manualQ, config, handleGlobalPaste, handleFileUpload, handleManualUpload, clearImage, deleteSelected, removeFromErrorBook, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual };
       }
     }).mount('#app');
   </script>
