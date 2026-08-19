@@ -3,31 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>个人极简题库 - 最终跨域无错版</title>
+  <title>个人极简题库 - 终极全能版</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
   <div id="app" class="max-w-2xl mx-auto p-4 md:p-6" @paste="handleGlobalPaste">
     
+    <!-- 顶部导航 -->
     <header class="flex justify-between items-center mb-5 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
       <h1 class="text-lg font-bold text-indigo-600">⚡ 极简题库</h1>
       <div class="space-x-2">
-        <button @click="view = 'quiz'" :class="view === 'quiz' ? 'bg-indigo-600 text-white' : 'bg-gray-100'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">刷题</button>
+        <button @click="view = 'quiz'" :class="view === 'quiz' ? 'bg-indigo-600 text-white' : 'bg-gray-100'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">刷题 ({{ questions.length }})</button>
         <button @click="view = 'import'" :class="view === 'import' ? 'bg-indigo-600 text-white' : 'bg-gray-100'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">AI 导入</button>
         <button @click="view = 'settings'" :class="view === 'settings' ? 'bg-indigo-600 text-white' : 'bg-gray-100'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">AI 设置</button>
       </div>
     </header>
 
+    <!-- 1. 刷题视图 -->
     <main v-if="view === 'quiz'">
       <div v-if="questions.length === 0" class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
         <div class="text-4xl mb-3">📚</div>
-        <p class="text-gray-500 text-sm">题库暂无题目，进入“AI 导入”粘贴截图即可添加。</p>
+        <p class="text-gray-500 text-sm mb-4">题库暂无题目，支持纯文本、截图、图文结合导入。</p>
+        <button @click="view = 'import'" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium shadow hover:bg-indigo-700">去导入题目</button>
       </div>
       <div v-else class="bg-white rounded-xl shadow-sm border p-6">
         <div class="text-xs text-gray-400 mb-4 flex justify-between">
           <span>当前第 {{ currentIndex + 1 }} / {{ questions.length }} 题</span>
-          <button @click="deleteQuestion" class="text-red-400 hover:text-red-600">删除此题</button>
+          <button @click="deleteQuestion" class="text-red-400 hover:text-red-600 font-bold">删除此题</button>
         </div>
         <h2 class="text-base font-bold mb-4">{{ currentQuestion.title }}</h2>
         <div class="space-y-2 mb-6">
@@ -49,51 +52,112 @@
       </div>
     </main>
 
+    <!-- 2. AI 全能导入视图 -->
     <main v-if="view === 'import'" class="space-y-4">
       <div class="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-        <h2 class="text-sm font-bold">📷 截图粘贴上传</h2>
+        <div class="flex justify-between items-end">
+          <h2 class="text-sm font-bold text-gray-800">📥 全能 AI 导入区</h2>
+          <span class="text-[11px] text-gray-400">纯文本 / 图片 / 组合均可</span>
+        </div>
         
-        <div @click="$refs.fileInput.click()" class="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:bg-gray-50 transition">
+        <div @click="$refs.fileInput.click()" class="border-2 border-dashed border-indigo-200 bg-indigo-50/30 rounded-xl p-5 text-center cursor-pointer hover:bg-indigo-50 transition relative">
           <input ref="fileInput" type="file" accept="image/*" @change="handleFileUpload" class="hidden" />
           <div v-if="!imagePreview">
-            <p class="text-sm font-bold text-indigo-600">在此按 Ctrl + V 粘贴截图</p>
-            <p class="text-xs text-gray-400 mt-1">或点击选择图片</p>
+            <div class="text-2xl mb-1">📷</div>
+            <p class="text-sm font-bold text-indigo-600">在此按 Ctrl + V 粘贴图片</p>
+            <p class="text-xs text-gray-400 mt-1">或点击选择图片文件</p>
           </div>
-          <img v-else :src="imagePreview" class="max-h-56 mx-auto rounded border" />
+          <div v-else class="relative inline-block" @click.stop>
+            <img :src="imagePreview" class="max-h-56 mx-auto rounded border shadow-sm" />
+            <button @click="clearImage" class="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm shadow hover:bg-red-600">✕</button>
+          </div>
         </div>
 
-        <button @click="processWithAI" :disabled="loading || !imagePreview" class="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold text-sm disabled:opacity-50">
-          {{ loading ? '🤖 AI 正在识别中...' : '开始识别' }}
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">题目文本 / 补充描述（可选）</label>
+          <textarea v-model="rawText" rows="3" placeholder="可以直接在这里粘贴纯文本题目... 如果有图片，也可以在这里作为补充要求。" class="w-full p-3 border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-y"></textarea>
+        </div>
+
+        <button @click="processWithAI" :disabled="loading || (!imagePreview && !rawText)" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-indigo-700 shadow-md transition flex justify-center items-center">
+          <span v-if="loading" class="flex items-center">
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+            AI 正在全力识别中...
+          </span>
+          <span v-else>🚀 开始智能识别</span>
         </button>
 
-        <div v-if="importLog" class="p-3 bg-gray-100 rounded-lg text-xs font-mono whitespace-pre-wrap">{{ importLog }}</div>
+        <div v-if="importLog" :class="importError ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'" class="p-3 rounded-lg text-xs font-mono whitespace-pre-wrap">
+          {{ importLog }}
+        </div>
+      </div>
+
+      <!-- AI 结果人工核对卡片 -->
+      <div v-if="previewQuestions.length > 0" class="bg-white rounded-xl shadow-sm border border-indigo-100 p-6 space-y-4">
+        <div class="flex justify-between items-center border-b border-gray-100 pb-3">
+          <div>
+            <h3 class="text-sm font-bold text-gray-800">📋 识别结果核对 ({{ previewQuestions.length }} 题)</h3>
+            <p class="text-[11px] text-gray-400">核对/修改无误后点击右侧按钮导入</p>
+          </div>
+          <button @click="commitQuestions" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow hover:bg-emerald-700 transition">
+            ✓ 确认导入题库
+          </button>
+        </div>
+
+        <div v-for="(q, qIndex) in previewQuestions" :key="qIndex" class="p-4 bg-gray-50 rounded-xl border text-sm space-y-3">
+          <div>
+            <span class="text-xs font-bold text-gray-500 mb-1 block">题目内容：</span>
+            <input v-model="q.title" class="w-full font-bold p-2 bg-white border rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none" />
+          </div>
+          <div>
+             <span class="text-xs font-bold text-gray-500 mb-1 block">选项与答案 (点击单选框设为正确答案)：</span>
+            <div class="space-y-1.5">
+              <div v-for="(opt, oIndex) in q.options" :key="oIndex" class="flex items-center space-x-2">
+                <input type="radio" :name="'ans_' + qIndex" :checked="q.answer === oIndex" @change="q.answer = oIndex" class="w-4 h-4 text-indigo-600 cursor-pointer" />
+                <span class="font-mono text-gray-400 font-bold w-5">{{ String.fromCharCode(65 + oIndex) }}.</span>
+                <input v-model="q.options[oIndex]" class="flex-1 p-1.5 bg-white border rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 outline-none" />
+              </div>
+            </div>
+          </div>
+          <div>
+            <span class="text-xs font-bold text-gray-500 mb-1 block">解析内容：</span>
+            <textarea v-model="q.analysis" rows="2" class="w-full p-2 bg-white border rounded-lg text-gray-600 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"></textarea>
+          </div>
+        </div>
       </div>
     </main>
 
+    <!-- 3. AI 设置视图 -->
     <main v-if="view === 'settings'" class="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-      <h2 class="text-sm font-bold border-b pb-2">⚙️ 接口配置 (内置跨域穿透)</h2>
+      <h2 class="text-sm font-bold border-b pb-2">⚙️ 接口配置 (内置 CORS 跨域穿透)</h2>
       
       <div>
         <label class="block text-xs font-bold text-gray-700 mb-1">接口地址</label>
-        <input v-model="config.endpoint" type="text" class="w-full p-2 border rounded text-sm font-mono bg-gray-50" />
+        <input v-model="config.endpoint" type="text" class="w-full p-2.5 border rounded-lg text-sm font-mono bg-gray-50" />
       </div>
       <div>
         <label class="block text-xs font-bold text-gray-700 mb-1">API Key</label>
-        <input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-2 border rounded text-sm font-mono" />
+        <input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-2.5 border rounded-lg text-sm font-mono" />
       </div>
       <div>
-        <label class="block text-xs font-bold text-red-600 mb-1">模型名称 (必须填支持识图的模型，不能用 gpt-5.6-terra！)</label>
-        <input v-model="config.model" type="text" placeholder="gpt-4o-mini" class="w-full p-2 border border-red-300 rounded text-sm font-mono bg-red-50" />
+        <label class="block text-xs font-bold text-red-600 mb-1">模型名称 (必须填支持识图的模型，不能用 gpt-5.6-terra)</label>
+        <input v-model="config.model" type="text" placeholder="gpt-4o-mini" class="w-full p-2.5 border border-red-300 rounded-lg text-sm font-mono bg-red-50" />
       </div>
 
-      <div class="flex gap-2 pt-2">
-        <button @click="saveSettings" class="px-4 py-2 bg-indigo-600 text-white rounded text-sm font-bold">保存配置</button>
-        <button @click="testConnection" :disabled="testLoading" class="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-bold">
+      <div class="flex gap-2 pt-2 border-b pb-4">
+        <button @click="saveSettings" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow hover:bg-indigo-700">保存配置</button>
+        <button @click="testConnection" :disabled="testLoading" class="px-4 py-2 bg-gray-100 text-gray-700 border rounded-lg text-sm font-bold hover:bg-gray-200">
           {{ testLoading ? '测试中...' : '测试连接' }}
         </button>
       </div>
 
-      <div v-if="diagLog" class="p-3 bg-slate-900 text-emerald-400 rounded-lg text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+      <div>
+        <h2 class="text-sm font-bold text-red-600 mb-2 mt-4">⚠️ 数据管理</h2>
+        <button @click="clearAllData" class="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold hover:bg-red-100">
+          清空所有题库数据
+        </button>
+      </div>
+
+      <div v-if="diagLog" class="p-3 bg-slate-900 text-emerald-400 rounded-lg text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto mt-4">
         {{ diagLog }}
       </div>
     </main>
@@ -104,19 +168,22 @@
 
     createApp({
       setup() {
-        const view = ref('settings');
+        const view = ref('import'); // 默认展示导入页面
         const questions = ref([]);
+        const previewQuestions = ref([]); 
         const currentIndex = ref(0);
         const selectedAnswer = ref(null);
         const showResult = ref(false);
         const loading = ref(false);
         const testLoading = ref(false);
         const importLog = ref('');
+        const importError = ref(false);
         const diagLog = ref('');
+        
+        const rawText = ref('');
         const imagePreview = ref('');
         const imageBase64 = ref('');
 
-        // 默认将模型强制设置为支持图片的 gpt-4o-mini
         const config = ref({
           endpoint: 'https://edge.lingsuan.org/v1/chat/completions',
           apiKey: '',
@@ -126,14 +193,19 @@
         const currentQuestion = computed(() => questions.value[currentIndex.value] || {});
 
         onMounted(() => {
-          const savedQ = localStorage.getItem('quiz_data_v5');
-          const savedConf = localStorage.getItem('quiz_cfg_v5');
+          const savedQ = localStorage.getItem('quiz_data_v7');
+          const savedConf = localStorage.getItem('quiz_cfg_v7');
           if (savedQ) questions.value = JSON.parse(savedQ);
           if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
         });
 
+        // 核心修复点：将保存函数定义好！
+        const saveQuestions = () => {
+          localStorage.setItem('quiz_data_v7', JSON.stringify(questions.value));
+        };
+
         const saveSettings = () => {
-          localStorage.setItem('quiz_cfg_v5', JSON.stringify(config.value));
+          localStorage.setItem('quiz_cfg_v7', JSON.stringify(config.value));
           alert('设置保存成功！');
         };
 
@@ -141,8 +213,9 @@
           const items = (e.clipboardData || e.originalEvent.clipboardData).items;
           for (let item of items) {
             if (item.type.indexOf('image') !== -1) {
+              e.preventDefault(); 
               processImage(item.getAsFile());
-              view.value = 'import';
+              view.value = 'import'; 
               break;
             }
           }
@@ -156,7 +229,7 @@
             const img = new Image();
             img.onload = () => {
               const canvas = document.createElement('canvas');
-              const maxDim = 800; 
+              const maxDim = 1000; 
               let w = img.width, h = img.height;
               if (w > maxDim || h > maxDim) {
                 if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
@@ -174,11 +247,13 @@
           reader.readAsDataURL(file);
         };
 
-        // 核心 Fetch 请求，自动内置跨域代理 corsproxy.io，强制破解拦截！
+        const clearImage = () => {
+          imagePreview.value = '';
+          imageBase64.value = '';
+        };
+
         const sendRequest = async (messages) => {
           let targetUrl = config.value.endpoint.trim();
-          
-          // 使用代理服务器转发请求，彻底解决浏览器的跨域拦截 (CORS) 问题
           const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
 
           const res = await fetch(proxyUrl, {
@@ -216,40 +291,94 @@
 
         const processWithAI = async () => {
           loading.value = true;
-          importLog.value = '正在上传并请求 AI 分析...';
+          importError.value = false;
+          importLog.value = '正在上传数据并请求 AI 智能提取...';
+          previewQuestions.value = []; 
           
+          const systemPrompt = `提取题目，严格输出纯 JSON 数组格式，不要使用 markdown 标记 (\`\`\`json)。格式如下：
+[
+  {
+    "title": "完整题目描述",
+    "options": ["选项A", "选项B", "选项C", "选项D"],
+    "answer": 0, // 正确答案索引(0为A, 1为B, 2为C)
+    "analysis": "解析说明"
+  }
+]`;
+
+          const contentArray = [];
+          
+          if (rawText.value) {
+            contentArray.push({ type: 'text', text: `${systemPrompt}\n\n下面是用户输入的题目内容/补充要求：\n${rawText.value}` });
+          } else {
+            contentArray.push({ type: 'text', text: systemPrompt });
+          }
+
+          if (imageBase64.value) {
+            contentArray.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64.value}` } });
+          }
+
           try {
-            const data = await sendRequest([{
-              role: 'user',
-              content: [
-                { type: 'text', text: '提取图中的选择题。严格输出JSON数组，格式:[{"title":"题目","options":["A选项","B选项"],"answer":0,"analysis":"解析"}]。不要任何其他废话和 markdown 标记！' },
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64.value}` } }
-              ]
-            }]);
+            const data = await sendRequest([{ role: 'user', content: contentArray }]);
 
             const raw = data.choices[0].message.content;
             const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
             const start = cleaned.indexOf('[');
             const end = cleaned.lastIndexOf(']');
+            
+            if(start === -1 || end === -1) {
+                throw new Error("AI 未返回合法的 JSON 数据，可能是图片不清晰或文本无效。");
+            }
+            
             const parsed = JSON.parse(cleaned.substring(start, end + 1));
 
             if (parsed.length > 0) {
-              questions.value.push(...parsed);
-              saveQuestions();
-              importLog.value = `🎉 成功识别并导入 ${parsed.length} 题！请前往「刷题」查看。`;
-              imagePreview.value = '';
+              previewQuestions.value = parsed;
+              importLog.value = `🎉 成功识别出 ${parsed.length} 道题目！请在下方核对，确认无误后点击导入。`;
+            } else {
+              throw new Error("未能识别出题目内容，请检查图片或文本");
             }
           } catch (err) {
+            importError.value = true;
             importLog.value = `❌ 识别失败：\n${err.message}`;
           } finally {
             loading.value = false;
           }
         };
 
+        const commitQuestions = () => {
+          questions.value.push(...previewQuestions.value);
+          saveQuestions(); // 完美调用保存
+          alert(`🎉 成功导入 ${previewQuestions.value.length} 道题目到题库！`);
+          previewQuestions.value = [];
+          rawText.value = '';
+          clearImage();
+          view.value = 'quiz'; 
+        };
+
         const selectAnswer = (idx) => { selectedAnswer.value = idx; };
         const nextQuestion = () => { showResult.value = false; selectedAnswer.value = null; if (currentIndex.value < questions.value.length - 1) currentIndex.value++; };
         const prevQuestion = () => { showResult.value = false; selectedAnswer.value = null; if (currentIndex.value > 0) currentIndex.value--; };
-        const deleteQuestion = () => { questions.value.splice(currentIndex.value, 1); saveQuestions(); if(currentIndex.value > 0) currentIndex.value--; showResult.value = false; selectedAnswer.value = null; };
+        
+        const deleteQuestion = () => { 
+            if(confirm('确定要删除这道题吗？')) {
+                questions.value.splice(currentIndex.value, 1); 
+                saveQuestions(); 
+                if(currentIndex.value >= questions.value.length && currentIndex.value > 0) currentIndex.value--; 
+                showResult.value = false; 
+                selectedAnswer.value = null; 
+            }
+        };
+
+        const clearAllData = () => {
+            if(confirm('⚠️ 警告：这会清空你所有的题库数据，确定继续吗？')) {
+                questions.value = [];
+                saveQuestions();
+                currentIndex.value = 0;
+                showResult.value = false;
+                alert('已清空所有题库数据！');
+            }
+        };
+
         const getOptionClass = (idx) => {
           if (!showResult.value) return selectedAnswer.value === idx ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-bold' : 'border-gray-200 hover:bg-gray-50';
           if (idx === currentQuestion.value.answer) return 'border-green-500 bg-green-50 text-green-700 font-bold';
@@ -257,7 +386,7 @@
           return 'border-gray-200 opacity-50';
         };
 
-        return { view, questions, currentIndex, currentQuestion, selectedAnswer, showResult, loading, testLoading, importLog, diagLog, config, imagePreview, handleGlobalPaste, handleFileUpload, testConnection, saveSettings, processWithAI, selectAnswer, nextQuestion, prevQuestion, deleteQuestion, getOptionClass };
+        return { view, questions, previewQuestions, currentIndex, currentQuestion, selectedAnswer, showResult, loading, testLoading, importLog, importError, diagLog, config, imagePreview, rawText, handleGlobalPaste, handleFileUpload, clearImage, testConnection, saveSettings, processWithAI, commitQuestions, selectAnswer, nextQuestion, prevQuestion, deleteQuestion, clearAllData, getOptionClass };
       }
     }).mount('#app');
   </script>
