@@ -137,6 +137,35 @@
               <div v-for="(q, index) in displayedBankQuestions" :key="q.id" class="flex items-start space-x-3 p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition">
                 <input type="checkbox" :value="q.id" v-model="selectedBankQs" class="apple-check mt-1 shrink-0" />
                 <div class="flex-1 overflow-hidden">
+                  <div v-if="editingQuestionId === q.id && editQuestionDraft" class="space-y-3 p-3 bg-blue-50/40 border border-blue-100 rounded-xl">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm font-bold text-blue-800">编辑第 {{ index + 1 }} 题</span>
+                      <select v-model="editQuestionDraft.type" class="p-1.5 bg-white border border-blue-200 rounded text-xs font-bold text-gray-700 outline-none"><option value="single">单选题</option><option value="multiple">多选题</option></select>
+                    </div>
+                    <textarea v-model="editQuestionDraft.title" rows="3" placeholder="题目正文" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    <div class="space-y-2">
+                      <div v-for="(option, optionIndex) in editQuestionDraft.options" :key="optionIndex" class="flex items-center gap-2">
+                        <input :type="editQuestionDraft.type === 'single' ? 'radio' : 'checkbox'" :name="'edit-answer-' + q.id" :checked="editQuestionDraft.answer.includes(optionIndex)" @change="toggleEditAnswer(optionIndex)" :class="editQuestionDraft.type === 'single' ? 'apple-radio' : 'apple-check'" class="w-5 h-5 text-blue-500 shrink-0" />
+                        <span class="font-bold text-gray-400 w-5">{{ String.fromCharCode(65 + optionIndex) }}.</span>
+                        <input v-model="editQuestionDraft.options[optionIndex]" :placeholder="'选项 ' + String.fromCharCode(65 + optionIndex)" class="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <button v-if="editQuestionDraft.options.length > 2" @click="removeEditOption(optionIndex)" type="button" title="删除选项" class="w-8 h-8 text-red-500 hover:bg-red-50 rounded-lg text-lg">×</button>
+                      </div>
+                      <button v-if="editQuestionDraft.options.length < 6" @click="addEditOption" type="button" class="apple-btn px-3 py-1.5 bg-white border border-blue-200 text-blue-600 text-xs font-bold">添加选项</button>
+                    </div>
+                    <textarea v-model="editQuestionDraft.analysis" rows="2" placeholder="解析说明（可选）" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <input :id="'edit-image-' + q.id" type="file" accept="image/*" @change="handleEditImageUpload($event)" class="hidden" />
+                      <label :for="'edit-image-' + q.id" class="apple-btn px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold cursor-pointer">{{ editQuestionDraft.image ? '更换图片' : '导入图片' }}</label>
+                      <div @paste="handleEditImagePaste" tabindex="0" class="apple-btn px-3 py-1.5 border border-indigo-100 bg-white text-indigo-600 text-xs font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400">点击后 Ctrl + V 粘贴图片</div>
+                      <button v-if="editQuestionDraft.image" @click="editQuestionDraft.image = ''" type="button" class="apple-btn px-3 py-1.5 bg-red-50 text-red-500 text-xs font-bold">移除图片</button>
+                    </div>
+                    <img v-if="editQuestionDraft.image" :src="editQuestionDraft.image" class="max-h-48 rounded-xl border border-gray-200 shadow-sm" />
+                    <div class="flex justify-end gap-2 pt-1">
+                      <button @click="cancelEditQuestion" type="button" class="apple-btn px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold">取消</button>
+                      <button @click="saveEditQuestion" type="button" class="apple-btn px-4 py-2 bg-blue-500 text-white text-xs font-bold shadow-sm">保存修改</button>
+                    </div>
+                  </div>
+                  <template v-else>
                   <div class="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
                     <span class="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0" :class="q.type==='single'?'bg-blue-50 text-blue-600':'bg-purple-50 text-purple-600'">{{ q.type === 'single' ? '单选' : '多选' }}</span>
                     <span v-if="errorBook[q.id]" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-50 text-red-500 flex items-center shrink-0">错题本 (当前连对 {{errorBook[q.id].streak}}/2 次)</span>
@@ -148,12 +177,14 @@
                     <span><strong class="text-gray-500">答案:</strong> {{ (q.answer || []).map(a => String.fromCharCode(65+a)).join(', ') }}</span>
                   </div>
                   <div class="mt-3 flex flex-wrap items-start gap-2">
+                    <button @click="startEditQuestion(q)" class="apple-btn px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-bold">编辑题目</button>
                     <input :id="'bank-image-' + q.id" type="file" accept="image/*" @change="handleBankImageUpload($event, q)" class="hidden" />
                     <label :for="'bank-image-' + q.id" class="apple-btn px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold cursor-pointer">{{ q.image ? '更换图片' : '导入图片' }}</label>
                     <div @paste="handleBankImagePaste($event, q)" tabindex="0" class="apple-btn px-3 py-1.5 border border-indigo-100 bg-white text-indigo-600 text-xs font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400">点击后 Ctrl + V 粘贴图片</div>
                     <button v-if="q.image" @click="removeBankImage(q)" class="apple-btn px-3 py-1.5 bg-red-50 text-red-500 text-xs font-bold">移除图片</button>
                   </div>
                   <img v-if="q.image" :src="q.image" class="mt-3 max-h-32 rounded-xl border border-gray-100 shadow-sm" />
+                  </template>
                 </div>
               </div>
             </div>
@@ -372,9 +403,16 @@
 
       </transition>
     </div>
-    <div v-if="imageViewer.src" @click.self="closeImageViewer" @keydown.esc="closeImageViewer" role="dialog" aria-modal="true" aria-label="题目图片放大查看" tabindex="-1" class="fixed inset-0 z-[100] bg-black/85 p-4 md:p-8 flex items-center justify-center">
-      <button @click="closeImageViewer" type="button" title="关闭图片查看" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white text-2xl leading-none">×</button>
-      <img :src="imageViewer.src" alt="题目图片放大图" class="max-w-full max-h-[88vh] object-contain select-none" />
+    <div v-if="imageViewer.src" @click.self="closeImageViewer" role="dialog" aria-modal="true" aria-label="题目图片放大查看" class="fixed inset-0 z-[100] bg-black/85 p-4 md:p-8 flex items-center justify-center">
+      <div class="absolute top-4 left-4 z-10 flex gap-2">
+        <button @click="zoomImageBy(-0.25)" type="button" title="缩小图片" class="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white text-xl leading-none">−</button>
+        <button @click="resetImageZoom" type="button" title="还原图片大小" class="h-10 px-3 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-bold">{{ Math.round(imageViewer.scale * 100) }}%</button>
+        <button @click="zoomImageBy(0.25)" type="button" title="放大图片" class="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white text-xl leading-none">+</button>
+      </div>
+      <button @click="closeImageViewer" type="button" title="关闭图片查看" class="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white text-2xl leading-none">×</button>
+      <div @click.stop @wheel.prevent="handleImageWheel" @mousedown="startImagePan" @mousemove="moveImagePan" @mouseup="endImagePan" @mouseleave="endImagePan" @touchstart="startImageTouch" @touchmove.prevent="moveImageTouch" @touchend="endImageTouch" class="w-full h-full overflow-hidden flex items-center justify-center touch-none cursor-grab active:cursor-grabbing">
+        <img :src="imageViewer.src" alt="题目图片放大图" :style="{ transform: 'translate(' + imageViewer.x + 'px, ' + imageViewer.y + 'px) scale(' + imageViewer.scale + ')' }" class="max-w-full max-h-[88vh] object-contain select-none will-change-transform" draggable="false" />
+      </div>
     </div>
   </div>
 
@@ -464,13 +502,48 @@
         const manualAIWorking = ref(false);
         const addResult = ref({ message: '', error: false });
         const bankResult = ref({ message: '', error: false });
+        const editingQuestionId = ref('');
+        const editQuestionDraft = ref(null);
         const duplicateGroups = ref([]);
         const duplicateLabels = ref({});
         const settingsResult = ref({ message: '', error: false });
-        const imageViewer = ref({ src: '' });
-        const openImageViewer = (src) => { if (src) imageViewer.value = { src }; };
+        const imageViewer = ref({ src: '', scale: 1, x: 0, y: 0 });
+        const imageMouseDrag = { active: false, startX: 0, startY: 0 };
+        const imageTouchGesture = { distance: 0, scale: 1, startX: 0, startY: 0 };
+        const clampImageScale = (scale) => Math.max(1, Math.min(4, scale));
+        const openImageViewer = (src) => { if (src) imageViewer.value = { src, scale: 1, x: 0, y: 0 }; };
         const closeImageViewer = () => { imageViewer.value = { src: '' }; };
         const handleImageViewerKey = (event) => { if (event.key === 'Escape') closeImageViewer(); };
+        const resetImageZoom = () => { imageViewer.value.scale = 1; imageViewer.value.x = 0; imageViewer.value.y = 0; };
+        const zoomImageBy = (amount) => {
+          imageViewer.value.scale = clampImageScale(imageViewer.value.scale + amount);
+          if (imageViewer.value.scale === 1) { imageViewer.value.x = 0; imageViewer.value.y = 0; }
+        };
+        const handleImageWheel = (event) => zoomImageBy(event.deltaY < 0 ? 0.2 : -0.2);
+        const startImagePan = (event) => {
+          if (event.button !== 0) return;
+          imageMouseDrag.active = true;
+          imageMouseDrag.startX = event.clientX - imageViewer.value.x;
+          imageMouseDrag.startY = event.clientY - imageViewer.value.y;
+        };
+        const moveImagePan = (event) => {
+          if (!imageMouseDrag.active || imageViewer.value.scale === 1) return;
+          imageViewer.value.x = event.clientX - imageMouseDrag.startX;
+          imageViewer.value.y = event.clientY - imageMouseDrag.startY;
+        };
+        const endImagePan = () => { imageMouseDrag.active = false; };
+        const touchDistance = (touches) => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+        const startImageTouch = (event) => {
+          const touches = event.touches;
+          if (touches.length >= 2) { imageTouchGesture.distance = touchDistance(touches); imageTouchGesture.scale = imageViewer.value.scale; }
+          else if (touches.length === 1) { imageTouchGesture.startX = touches[0].clientX - imageViewer.value.x; imageTouchGesture.startY = touches[0].clientY - imageViewer.value.y; }
+        };
+        const moveImageTouch = (event) => {
+          const touches = event.touches;
+          if (touches.length >= 2 && imageTouchGesture.distance) imageViewer.value.scale = clampImageScale(imageTouchGesture.scale * touchDistance(touches) / imageTouchGesture.distance);
+          else if (touches.length === 1 && imageViewer.value.scale > 1) { imageViewer.value.x = touches[0].clientX - imageTouchGesture.startX; imageViewer.value.y = touches[0].clientY - imageTouchGesture.startY; }
+        };
+        const endImageTouch = () => { imageTouchGesture.distance = 0; if (imageViewer.value.scale === 1) { imageViewer.value.x = 0; imageViewer.value.y = 0; } };
         
         const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra', directConnection: false });
         const testLoading = ref(false); const diagLog = ref('');
@@ -641,6 +714,66 @@
           if (!imageItem) return;
           e.preventDefault();
           processBase64(imageItem.getAsFile(), data => question.image = data);
+        };
+        const startEditQuestion = (question) => {
+          editingQuestionId.value = question.id;
+          editQuestionDraft.value = JSON.parse(JSON.stringify(normalizeQuestion(question)));
+          bankResult.value = { message: '', error: false };
+        };
+        const cancelEditQuestion = () => { editingQuestionId.value = ''; editQuestionDraft.value = null; };
+        const toggleEditAnswer = (index) => {
+          const draft = editQuestionDraft.value;
+          if (!draft) return;
+          if (draft.type === 'single') draft.answer = [index];
+          else draft.answer = draft.answer.includes(index) ? draft.answer.filter(value => value !== index) : [...draft.answer, index];
+        };
+        const addEditOption = () => {
+          if (editQuestionDraft.value && editQuestionDraft.value.options.length < 6) editQuestionDraft.value.options.push('');
+        };
+        const removeEditOption = (index) => {
+          const draft = editQuestionDraft.value;
+          if (!draft || draft.options.length <= 2) return;
+          draft.options.splice(index, 1);
+          draft.answer = draft.answer.filter(value => value !== index).map(value => value > index ? value - 1 : value);
+        };
+        const handleEditImageUpload = (event) => {
+          const file = event.target.files[0];
+          if (file && editQuestionDraft.value) processBase64(file, data => editQuestionDraft.value.image = data);
+          event.target.value = '';
+        };
+        const handleEditImagePaste = (event) => {
+          const items = Array.from((event.clipboardData || event.originalEvent?.clipboardData || {}).items || []);
+          const imageItem = items.find(item => item.type && item.type.startsWith('image/'));
+          if (!imageItem || !editQuestionDraft.value) return;
+          event.preventDefault();
+          processBase64(imageItem.getAsFile(), data => editQuestionDraft.value.image = data);
+        };
+        const saveEditQuestion = () => {
+          const draft = editQuestionDraft.value;
+          const id = editingQuestionId.value;
+          if (!draft || !id) return;
+          const options = []; const optionIndexes = new Map();
+          draft.options.forEach((option, index) => {
+            const value = String(option || '').trim();
+            if (value) { optionIndexes.set(index, options.length); options.push(value); }
+          });
+          const answer = [...new Set(draft.answer.map(index => optionIndexes.get(index)).filter(Number.isInteger))];
+          const updated = normalizeQuestion({ ...draft, id, options, answer });
+          if ((!updated.title && !updated.image) || updated.options.length < 2 || updated.answer.length === 0 || (updated.type === 'single' && updated.answer.length !== 1)) {
+            bankResult.value = { message: '请填写题干、至少两个选项，并设置有效答案。', error: true };
+            return;
+          }
+          const duplicate = findDuplicateCandidate(updated, allQuestions.value, id);
+          if (duplicate?.kind === 'exact') {
+            bankResult.value = { message: '保存失败：题库中已有题干完全相同的题目。', error: true };
+            return;
+          }
+          const position = allQuestions.value.findIndex(question => question.id === id);
+          if (position === -1) { bankResult.value = { message: '保存失败：未找到原题目。', error: true }; return; }
+          allQuestions.value[position] = updated;
+          saveData();
+          cancelEditQuestion();
+          bankResult.value = { message: duplicate?.kind === 'similar' ? '题目已修改，但与题库中另一题高度相似。' : '题目已修改并保存。', error: false };
         };
         const saveQuestionImage = (question, file, successMessage) => {
           if (!file || !file.type.startsWith('image/')) {
@@ -1336,7 +1469,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, editingQuestionId, editQuestionDraft, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, resetImageZoom, zoomImageBy, handleImageWheel, startImagePan, moveImagePan, endImagePan, startImageTouch, moveImageTouch, endImageTouch, startEditQuestion, cancelEditQuestion, toggleEditAnswer, addEditOption, removeEditOption, handleEditImageUpload, handleEditImagePaste, saveEditQuestion, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
