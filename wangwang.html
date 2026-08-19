@@ -668,6 +668,36 @@
           return right - left >= 35 && bottom - top >= 35 ? [left, top, right, bottom] : null;
         };
 
+        // Vision models occasionally include the option line just above a photo. Remove it only
+        // when sparse text is followed by a dense, photo-like band; white diagrams stay untouched.
+        const trimLeadingTextBand = (canvas) => {
+          const context = canvas.getContext('2d');
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          const density = [];
+          for (let y = 0; y < canvas.height; y++) {
+            let marked = 0;
+            for (let x = 0; x < canvas.width; x++) {
+              const offset = (y * canvas.width + x) * 4;
+              const red = pixels[offset]; const green = pixels[offset + 1]; const blue = pixels[offset + 2];
+              if (Math.min(red, green, blue) < 185 || Math.max(red, green, blue) - Math.min(red, green, blue) > 25) marked++;
+            }
+            density.push(marked / canvas.width);
+          }
+          const limit = Math.min(Math.floor(canvas.height * 0.42), Math.max(0, canvas.height - 48));
+          let firstDenseRow = -1;
+          for (let row = 2; row < limit; row++) {
+            if (density[row - 2] > 0.42 && density[row - 1] > 0.42 && density[row] > 0.42) { firstDenseRow = row - 2; break; }
+          }
+          if (firstDenseRow < 8) return canvas;
+          const textBandDensity = density.slice(0, firstDenseRow).reduce((sum, value) => sum + value, 0) / firstDenseRow;
+          if (textBandDensity < 0.02 || textBandDensity > 0.3) return canvas;
+          const cleanTop = Math.max(0, firstDenseRow - 2);
+          const clean = document.createElement('canvas');
+          clean.width = canvas.width; clean.height = canvas.height - cleanTop;
+          clean.getContext('2d').drawImage(canvas, 0, cleanTop, canvas.width, clean.height, 0, 0, clean.width, clean.height);
+          return clean;
+        };
+
         const cropRecognizedImage = (source, crop) => new Promise(resolve => {
           if (!source || !crop) { resolve(''); return; }
           const img = new Image();
@@ -680,7 +710,7 @@
             const canvas = document.createElement('canvas');
             canvas.width = width; canvas.height = height;
             canvas.getContext('2d').drawImage(img, x, y, width, height, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.96));
+            resolve(trimLeadingTextBand(canvas).toDataURL('image/jpeg', 0.96));
           };
           img.onerror = () => resolve('');
           img.src = source.cropSource || source.preview;
@@ -1062,7 +1092,7 @@
             importLog.value = '请先在设置中填写 AI 接口、Key 和模型。';
             return;
           }
-          const systemPrompt = '仅返回JSON数组，无Markdown。每项：{"type":"single|multiple","title":"题干","options":["选项"],"answer":[0],"analysis":"解析","imageSource":1,"imageCrop":[左,上,右,下]}。answer是从0开始的正确选项序号。imageSource是输入截图从1开始的序号；只有题干必须依赖照片、图表、示意图时才填写imageSource和imageCrop。imageCrop为该截图内实际图片的边界，坐标按左上为(0,0)、右下为(1000,1000)；不要截取题干、选项、答案、按钮或整张页面。没有图片则省略这两项。逐题提取，信息不全也保留。';
+          const systemPrompt = '仅返回JSON数组，无Markdown。每项：{"type":"single|multiple","title":"题干","options":["选项"],"answer":[0],"analysis":"解析","imageSource":1,"imageCrop":[左,上,右,下]}。answer是从0开始的正确选项序号。imageSource是输入截图从1开始的序号；只有题干必须依赖照片、图表、示意图时才填写imageSource和imageCrop。imageCrop为实际图片矩形的紧贴边界，坐标按左上为(0,0)、右下为(1000,1000)；绝不包含图片前后的题干、选项、答案、按钮或整张页面。没有图片则省略这两项。逐题提取，信息不全也保留。';
           const contentArray = [];
           if (rawText.value) contentArray.push({ type: 'text', text: `${systemPrompt}\n内容：${rawText.value}` });
           else contentArray.push({ type: 'text', text: systemPrompt });
