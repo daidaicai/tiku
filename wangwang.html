@@ -340,6 +340,10 @@
               <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 接口端点</label><input v-model="config.endpoint" type="text" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 密钥 (Key)</label><input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">大模型名称</label><input v-model="config.model" type="text" placeholder="默认: gpt-5.6-terra" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              <label class="flex items-start gap-3 p-3 bg-blue-50/50 border border-blue-100 rounded-xl cursor-pointer">
+                <input v-model="config.directConnection" type="checkbox" class="apple-check mt-0.5 w-5 h-5 text-blue-500" />
+                <span><span class="block text-sm font-bold text-blue-700">直连加速</span><span class="block text-[11px] text-blue-500 mt-0.5">接口支持浏览器跨域时可更快；若测试失败请关闭此项后重试。</span></span>
+              </label>
             </div>
             <div class="flex gap-3 pt-4 border-b border-gray-100 pb-6">
               <button @click="saveSettings" class="apple-btn px-6 py-2.5 bg-gray-900 text-white text-sm font-semibold shadow-md">保存配置</button>
@@ -456,10 +460,46 @@
         const duplicateLabels = ref({});
         const settingsResult = ref({ message: '', error: false });
         
-        const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra' });
+        const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra', directConnection: false });
         const testLoading = ref(false); const diagLog = ref('');
 
-        onMounted(() => {
+        const questionDatabaseName = 'wangwang_quiz_images_v1';
+        const questionStoreName = 'questions';
+        const openQuestionDatabase = () => new Promise((resolve, reject) => {
+          if (!window.indexedDB) { reject(new Error('当前浏览器不支持 IndexedDB')); return; }
+          const request = window.indexedDB.open(questionDatabaseName, 1);
+          request.onupgradeneeded = () => {
+            const database = request.result;
+            if (!database.objectStoreNames.contains(questionStoreName)) database.createObjectStore(questionStoreName, { keyPath: 'key' });
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error('无法打开本地题库数据库'));
+        });
+        const readQuestionsFromIndexedDB = async () => {
+          const database = await openQuestionDatabase();
+          return new Promise((resolve, reject) => {
+            const request = database.transaction(questionStoreName, 'readonly').objectStore(questionStoreName).get('all');
+            request.onsuccess = () => {
+              database.close();
+              try { resolve(request.result?.value ? JSON.parse(request.result.value) : null); }
+              catch (error) { reject(new Error('本地题库数据损坏：' + error.message)); }
+            };
+            request.onerror = () => { database.close(); reject(request.error || new Error('读取本地题库失败')); };
+          });
+        };
+        const writeQuestionsToIndexedDB = async (questions) => {
+          const database = await openQuestionDatabase();
+          return new Promise((resolve, reject) => {
+            const transaction = database.transaction(questionStoreName, 'readwrite');
+            transaction.objectStore(questionStoreName).put({ key: 'all', value: JSON.stringify(questions) });
+            transaction.oncomplete = () => { database.close(); resolve(); };
+            transaction.onerror = () => { database.close(); reject(transaction.error || new Error('保存本地题库失败')); };
+            transaction.onabort = () => { database.close(); reject(transaction.error || new Error('保存本地题库失败')); };
+          });
+        };
+        const compactQuestionsForLocalStorage = (questions) => questions.map(question => ({ ...question, image: '' }));
+
+        onMounted(async () => {
           try { allQuestions.value = normalizeQuestionList(JSON.parse(localStorage.getItem('airquiz_db_v3'))); } catch (e) { allQuestions.value = []; }
           try { errorBook.value = JSON.parse(localStorage.getItem('airquiz_err_v3')) || {}; } catch (e) { errorBook.value = {}; }
           try { examRecords.value = JSON.parse(localStorage.getItem('airquiz_hist_v3')) || []; } catch (e) { examRecords.value = []; }
@@ -468,15 +508,43 @@
             if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
           } catch (e) {}
           window.addEventListener('paste', handleGlobalPaste);
+          try {
+            const savedQuestions = await readQuestionsFromIndexedDB();
+            if (Array.isArray(savedQuestions)) allQuestions.value = normalizeQuestionList(savedQuestions);
+            else if (allQuestions.value.length) {
+              // One-time migration of legacy Base64 pictures out of localStorage.
+              await writeQuestionsToIndexedDB(JSON.parse(JSON.stringify(allQuestions.value)));
+              localStorage.setItem('airquiz_db_v3', JSON.stringify(compactQuestionsForLocalStorage(allQuestions.value)));
+            }
+          } catch (error) {
+            console.error('题库图片迁移失败：', error);
+            settingsResult.value = { message: `图片本地数据库不可用：${error.message}`, error: true };
+          }
         });
 
         onUnmounted(() => window.removeEventListener('paste', handleGlobalPaste));
 
-        const saveData = () => { localStorage.setItem('airquiz_db_v3', JSON.stringify(allQuestions.value)); localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value)); localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value)); };
+        const saveData = () => {
+          const snapshot = JSON.parse(JSON.stringify(allQuestions.value));
+          // Images live in IndexedDB, which has a much larger browser-managed quota than localStorage.
+          writeQuestionsToIndexedDB(snapshot)
+            .then(() => {
+              localStorage.setItem('airquiz_db_v3', JSON.stringify(compactQuestionsForLocalStorage(snapshot)));
+              localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value));
+              localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value));
+            })
+            .catch(error => {
+              console.error('保存题库失败：', error);
+              bankResult.value = { message: `保存图片题失败：${error.message}`, error: true };
+            });
+        };
         const saveSettings = () => {
           try { localStorage.setItem('airquiz_cfg_v3', JSON.stringify(config.value)); settingsResult.value = { message: '配置已保存在当前浏览器。', error: false }; }
           catch (error) { settingsResult.value = { message: `保存失败：${error.message}`, error: true }; }
         };
+        const getApiRequestUrl = (endpoint) => config.value.directConnection
+          ? endpoint
+          : 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
 
         const isDuplicate = (title) => {
             const key = titleKey(title);
@@ -632,7 +700,7 @@
               };
               // Keep a sharper local source for crops; send a smaller copy to AI to control request cost.
               const cropSource = render(2400, 0.96);
-              const aiSource = render(1280, 0.86);
+              const aiSource = render(960, 0.76);
               aiImages.value.push({
                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 preview: cropSource,
@@ -685,13 +753,18 @@
           }
           const limit = Math.min(Math.floor(canvas.height * 0.42), Math.max(0, canvas.height - 48));
           let firstDenseRow = -1;
-          for (let row = 2; row < limit; row++) {
-            if (density[row - 2] > 0.42 && density[row - 1] > 0.42 && density[row] > 0.42) { firstDenseRow = row - 2; break; }
+          // A photograph has texture across a sustained band. Text has a few occupied rows
+          // separated by blank ones, so it cannot pass this 12-row test.
+          for (let row = 2; row + 12 < limit; row++) {
+            const window = density.slice(row, row + 12);
+            const average = window.reduce((sum, value) => sum + value, 0) / window.length;
+            const texturedRows = window.filter(value => value > 0.12).length;
+            if (average > 0.18 && texturedRows >= 9) { firstDenseRow = row; break; }
           }
           if (firstDenseRow < 8) return canvas;
           const textBandDensity = density.slice(0, firstDenseRow).reduce((sum, value) => sum + value, 0) / firstDenseRow;
-          if (textBandDensity < 0.02 || textBandDensity > 0.3) return canvas;
-          const cleanTop = Math.max(0, firstDenseRow - 2);
+          if (textBandDensity < 0.008 || textBandDensity > 0.32) return canvas;
+          const cleanTop = firstDenseRow;
           const clean = document.createElement('canvas');
           clean.width = canvas.width; clean.height = canvas.height - cleanTop;
           clean.getContext('2d').drawImage(canvas, 0, cleanTop, canvas.width, clean.height, 0, 0, clean.width, clean.height);
@@ -845,8 +918,7 @@
           if (manualQ.value.image) content.push({ type: 'image_url', image_url: { url: manualQ.value.image } });
 
           try {
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
-            const response = await fetch(proxyUrl, {
+            const response = await fetch(getApiRequestUrl(endpoint), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
               body: JSON.stringify({ model, messages: [{ role: 'user', content }], temperature: 0.1 })
@@ -1099,8 +1171,7 @@
           aiImages.value.forEach(image => contentArray.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image.base64}` } }));
 
           try {
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
-            const res = await fetch(proxyUrl, {
+            const res = await fetch(getApiRequestUrl(endpoint), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
               body: JSON.stringify({ model, messages: [{ role: 'user', content: contentArray }], temperature: 0.1 })
@@ -1157,13 +1228,12 @@
 
           testLoading.value = true;
           const startedAt = new Date().toLocaleTimeString('zh-CN');
-          diagLog.value = `[${startedAt}] 正在通过代理连接 API...\n端点: ${endpoint}\n模型: ${model}`;
+          diagLog.value = `[${startedAt}] 正在${config.value.directConnection ? '直连' : '通过兼容中转'} API...\n端点: ${endpoint}\n模型: ${model}`;
           const controller = new AbortController();
           const timeout = window.setTimeout(() => controller.abort(), 25000);
 
           try {
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
-            const response = await fetch(proxyUrl, {
+            const response = await fetch(getApiRequestUrl(endpoint), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
