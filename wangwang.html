@@ -615,9 +615,34 @@
         };
         const addAIImage = (file) => {
           if (!file || !file.type.startsWith('image/')) return;
-          processBase64(file, (preview, base64) => {
-            aiImages.value.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, preview, base64 });
-          });
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const render = (maxSide, quality) => {
+                let width = img.width; let height = img.height;
+                if (width > maxSide || height > maxSide) {
+                  if (width > height) { height = Math.round(height * maxSide / width); width = maxSide; }
+                  else { width = Math.round(width * maxSide / height); height = maxSide; }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width; canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                return canvas.toDataURL('image/jpeg', quality);
+              };
+              // Keep a sharper local source for crops; send a smaller copy to AI to control request cost.
+              const cropSource = render(2400, 0.96);
+              const aiSource = render(1280, 0.86);
+              aiImages.value.push({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                preview: cropSource,
+                cropSource,
+                base64: aiSource.split(',')[1]
+              });
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
         };
         const removeAIImage = (id) => { aiImages.value = aiImages.value.filter(image => image.id !== id); };
         const clearImage = () => { aiImages.value = []; };
@@ -655,10 +680,10 @@
             const canvas = document.createElement('canvas');
             canvas.width = width; canvas.height = height;
             canvas.getContext('2d').drawImage(img, x, y, width, height, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.9));
+            resolve(canvas.toDataURL('image/jpeg', 0.96));
           };
           img.onerror = () => resolve('');
-          img.src = source.preview;
+          img.src = source.cropSource || source.preview;
         });
 
         const attachRecognizedImages = async (rawQuestions) => {
