@@ -3,24 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>个人极简题库 - 直连无错版</title>
+  <title>个人极简题库 - 最终跨域无错版</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
   <div id="app" class="max-w-2xl mx-auto p-4 md:p-6" @paste="handleGlobalPaste">
     
-    <!-- 顶部环境警告（如果检测到双击打开，立刻提醒） -->
-    <div v-if="isFileProtocol" class="mb-4 p-4 bg-red-100 border border-red-300 text-red-700 rounded-xl shadow-sm font-medium text-sm flex items-start">
-      <span class="text-xl mr-2">⚠️</span>
-      <div>
-        <strong class="block text-base mb-1">环境警告：您当前是双击本地文件打开的 (file://)</strong>
-        纯前端代码在本地双击打开时，连接任何中转站 API 都会被浏览器强制拦截，必然会报 <code>Failed to fetch</code> 错误！<br>
-        <span class="block mt-2 font-bold text-red-800">解决方法：请使用 VS Code 的 Live Server 插件打开，或者将其部署到 GitHub Pages / Vercel 上运行。</span>
-      </div>
-    </div>
-
-    <!-- 顶部导航 -->
     <header class="flex justify-between items-center mb-5 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
       <h1 class="text-lg font-bold text-indigo-600">⚡ 极简题库</h1>
       <div class="space-x-2">
@@ -30,7 +19,6 @@
       </div>
     </header>
 
-    <!-- 1. 刷题视图 -->
     <main v-if="view === 'quiz'">
       <div v-if="questions.length === 0" class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
         <div class="text-4xl mb-3">📚</div>
@@ -61,7 +49,6 @@
       </div>
     </main>
 
-    <!-- 2. AI 导入视图 -->
     <main v-if="view === 'import'" class="space-y-4">
       <div class="bg-white rounded-xl shadow-sm border p-6 space-y-4">
         <h2 class="text-sm font-bold">📷 截图粘贴上传</h2>
@@ -83,12 +70,11 @@
       </div>
     </main>
 
-    <!-- 3. AI 设置视图 -->
     <main v-if="view === 'settings'" class="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-      <h2 class="text-sm font-bold border-b pb-2">⚙️ 接口配置</h2>
+      <h2 class="text-sm font-bold border-b pb-2">⚙️ 接口配置 (内置跨域穿透)</h2>
       
       <div>
-        <label class="block text-xs font-bold text-gray-700 mb-1">接口地址 (必须以 /v1/chat/completions 结尾)</label>
+        <label class="block text-xs font-bold text-gray-700 mb-1">接口地址</label>
         <input v-model="config.endpoint" type="text" class="w-full p-2 border rounded text-sm font-mono bg-gray-50" />
       </div>
       <div>
@@ -96,8 +82,8 @@
         <input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-2 border rounded text-sm font-mono" />
       </div>
       <div>
-        <label class="block text-xs font-bold text-gray-700 mb-1">模型名称 (必须填支持识图的模型)</label>
-        <input v-model="config.model" type="text" placeholder="gpt-4o-mini" class="w-full p-2 border rounded text-sm font-mono" />
+        <label class="block text-xs font-bold text-red-600 mb-1">模型名称 (必须填支持识图的模型，不能用 gpt-5.6-terra！)</label>
+        <input v-model="config.model" type="text" placeholder="gpt-4o-mini" class="w-full p-2 border border-red-300 rounded text-sm font-mono bg-red-50" />
       </div>
 
       <div class="flex gap-2 pt-2">
@@ -129,35 +115,28 @@
         const diagLog = ref('');
         const imagePreview = ref('');
         const imageBase64 = ref('');
-        const isFileProtocol = ref(false);
 
-        // 默认配置为你截图上的参数
+        // 默认将模型强制设置为支持图片的 gpt-4o-mini
         const config = ref({
           endpoint: 'https://edge.lingsuan.org/v1/chat/completions',
           apiKey: '',
-          model: 'gpt-4o-mini' // 警告：gpt-5.6-terra 不支持传图，必须用 gpt-4o 或 gpt-4o-mini
+          model: 'gpt-4o-mini' 
         });
 
         const currentQuestion = computed(() => questions.value[currentIndex.value] || {});
 
         onMounted(() => {
-          // 检测是否是本地双击打开
-          if (window.location.protocol === 'file:') {
-            isFileProtocol.value = true;
-          }
-
-          const savedQ = localStorage.getItem('quiz_data_v4');
-          const savedConf = localStorage.getItem('quiz_cfg_v4');
+          const savedQ = localStorage.getItem('quiz_data_v5');
+          const savedConf = localStorage.getItem('quiz_cfg_v5');
           if (savedQ) questions.value = JSON.parse(savedQ);
           if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
         });
 
         const saveSettings = () => {
-          localStorage.setItem('quiz_cfg_v4', JSON.stringify(config.value));
+          localStorage.setItem('quiz_cfg_v5', JSON.stringify(config.value));
           alert('设置保存成功！');
         };
 
-        // 处理粘贴事件
         const handleGlobalPaste = (e) => {
           const items = (e.clipboardData || e.originalEvent.clipboardData).items;
           for (let item of items) {
@@ -177,7 +156,7 @@
             const img = new Image();
             img.onload = () => {
               const canvas = document.createElement('canvas');
-              const maxDim = 800; // 缩小尺寸，防止 payload 过大导致 400 错误
+              const maxDim = 800; 
               let w = img.width, h = img.height;
               if (w > maxDim || h > maxDim) {
                 if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
@@ -195,13 +174,14 @@
           reader.readAsDataURL(file);
         };
 
-        // 核心 Fetch 请求，去除所有多余代理，采用最纯净的 OpenAI 规范请求
+        // 核心 Fetch 请求，自动内置跨域代理 corsproxy.io，强制破解拦截！
         const sendRequest = async (messages) => {
-          if (isFileProtocol.value) {
-            throw new Error("🚨 严重错误：你正在本地双击运行 (file://)，浏览器安全机制直接物理切断了网络请求。\n\n请使用网页服务器环境运行（如 VS Code Live Server，或者上传到网页空间）。");
-          }
+          let targetUrl = config.value.endpoint.trim();
+          
+          // 使用代理服务器转发请求，彻底解决浏览器的跨域拦截 (CORS) 问题
+          const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
 
-          const res = await fetch(config.value.endpoint.trim(), {
+          const res = await fetch(proxyUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -223,12 +203,12 @@
 
         const testConnection = async () => {
           testLoading.value = true;
-          diagLog.value = "⏳ 正在发送网络握手...\n";
+          diagLog.value = "⏳ 正在通过跨域代理发送网络握手...\n";
           try {
             const res = await sendRequest([{ role: "user", content: "返回单词: OK" }]);
             diagLog.value += `✅ 测试成功！连接完全通畅！\nAI 回复: ${res.choices[0].message.content}`;
           } catch (err) {
-            diagLog.value += `❌ 失败:\n${err.message}\n\n【诊断】：若提示 Failed to fetch，说明当前运行环境被浏览器安全墙拦截。`;
+            diagLog.value += `❌ 失败:\n${err.message}\n\n注意：如果报错 401 说明 Key 错误；报错 404 说明接口地址写错了。`;
           } finally {
             testLoading.value = false;
           }
@@ -277,7 +257,7 @@
           return 'border-gray-200 opacity-50';
         };
 
-        return { view, questions, currentIndex, currentQuestion, selectedAnswer, showResult, loading, testLoading, importLog, diagLog, config, imagePreview, isFileProtocol, handleGlobalPaste, handleFileUpload, testConnection, saveSettings, processWithAI, selectAnswer, nextQuestion, prevQuestion, deleteQuestion, getOptionClass };
+        return { view, questions, currentIndex, currentQuestion, selectedAnswer, showResult, loading, testLoading, importLog, diagLog, config, imagePreview, handleGlobalPaste, handleFileUpload, testConnection, saveSettings, processWithAI, selectAnswer, nextQuestion, prevQuestion, deleteQuestion, getOptionClass };
       }
     }).mount('#app');
   </script>
