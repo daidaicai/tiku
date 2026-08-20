@@ -375,10 +375,20 @@
               <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 接口端点</label><input v-model="config.endpoint" type="text" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">API 密钥 (Key)</label><input v-model="config.apiKey" type="password" placeholder="sk-..." class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
               <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">大模型名称</label><input v-model="config.model" type="text" placeholder="默认: gpt-5.6-terra" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-              <label class="flex items-start gap-3 p-3 bg-blue-50/50 border border-blue-100 rounded-xl cursor-pointer">
-                <input v-model="config.directConnection" type="checkbox" class="apple-check mt-0.5 w-5 h-5 text-blue-500" />
-                <span><span class="block text-sm font-bold text-blue-700">直连加速</span><span class="block text-[11px] text-blue-500 mt-0.5">接口支持浏览器跨域时可更快；若测试失败请关闭此项后重试。</span></span>
-              </label>
+              <div><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">请求路线</label>
+                <select v-model="config.proxyMode" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option value="corsfix">Corsfix 公共中转（默认）</option>
+                  <option value="direct">直连 API（最快，不支持跨域时会失败）</option>
+                  <option value="corsproxy">CORSProxy.io 公共中转</option>
+                  <option value="corsanywhere">CORS Anywhere 公共中转（需先激活）</option>
+                  <option value="custom">自定义中转地址</option>
+                </select>
+              </div>
+              <div v-if="config.proxyMode === 'custom'"><label class="block text-xs font-semibold text-gray-500 mb-1.5 uppercase">自定义中转模板</label><input v-model="config.customProxyTemplate" type="text" placeholder="https://example.com/proxy?url={url}" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" /><p class="mt-1 text-[11px] text-gray-400">必须包含 <code>{url}</code>，页面会将 API 端点进行编码后替换它。</p></div>
+              <div class="flex items-start gap-3 p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
+                <span class="w-5 h-5 mt-0.5 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center">!</span>
+                <span><span class="block text-sm font-bold text-amber-800">公共中转风险提示</span><span class="block text-[11px] text-amber-700 mt-0.5">公共中转会接触 API Key 和试卷内容。请使用独立、低额度、可随时撤销的 Key；不要用主账号高额度 Key。</span></span>
+              </div>
             </div>
             <div class="flex gap-3 pt-4 border-b border-gray-100 pb-6">
               <button @click="saveSettings" class="apple-btn px-6 py-2.5 bg-gray-900 text-white text-sm font-semibold shadow-md">保存配置</button>
@@ -545,7 +555,7 @@
         };
         const endImageTouch = () => { imageTouchGesture.distance = 0; if (imageViewer.value.scale === 1) { imageViewer.value.x = 0; imageViewer.value.y = 0; } };
         
-        const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra', directConnection: false });
+        const config = ref({ endpoint: 'https://edge.lingsuan.org/v1/chat/completions', apiKey: '', model: 'gpt-5.6-terra', proxyMode: 'corsfix', customProxyTemplate: '' });
         const testLoading = ref(false); const diagLog = ref('');
 
         const questionDatabaseName = 'wangwang_quiz_images_v1';
@@ -591,6 +601,9 @@
           try {
             const savedConf = localStorage.getItem('airquiz_cfg_v3');
             if (savedConf) config.value = { ...config.value, ...JSON.parse(savedConf) };
+            // Migrate older route settings to Corsfix as the configured default.
+            if (typeof config.value.directConnection === 'boolean' || !config.value.proxyMode || config.value.proxyMode === 'corsproxy') config.value.proxyMode = 'corsfix';
+            delete config.value.directConnection;
           } catch (e) {}
           window.addEventListener('paste', handleGlobalPaste);
           window.addEventListener('keydown', handleImageViewerKey);
@@ -631,9 +644,22 @@
           try { localStorage.setItem('airquiz_cfg_v3', JSON.stringify(config.value)); settingsResult.value = { message: '配置已保存在当前浏览器。', error: false }; }
           catch (error) { settingsResult.value = { message: `保存失败：${error.message}`, error: true }; }
         };
-        const getApiRequestUrl = (endpoint) => config.value.directConnection
-          ? endpoint
-          : 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
+        const getApiRequestUrl = (endpoint) => {
+          const mode = config.value.proxyMode || 'corsfix';
+          if (mode === 'corsfix') return 'https://proxy.corsfix.com/?' + endpoint;
+          if (mode === 'corsproxy') return 'https://corsproxy.io/?' + encodeURIComponent(endpoint);
+          if (mode === 'corsanywhere') return 'https://cors-anywhere.herokuapp.com/' + endpoint;
+          if (mode === 'custom') {
+            const template = String(config.value.customProxyTemplate || '').trim();
+            if (!template.includes('{url}')) throw new Error('自定义中转模板必须包含 {url}。');
+            return template.replaceAll('{url}', encodeURIComponent(endpoint));
+          }
+          return endpoint;
+        };
+        const proxyRouteLabel = () => ({ corsfix: 'Corsfix 公共中转', direct: '直连 API', corsproxy: 'CORSProxy.io 公共中转', corsanywhere: 'CORS Anywhere 公共中转', custom: '自定义中转' }[config.value.proxyMode] || 'Corsfix 公共中转');
+        const apiNetworkMessage = (error) => error instanceof TypeError
+          ? `${proxyRouteLabel()} 无法建立浏览器请求。直连时请检查 CORS；公共中转时请更换路线或稍后重试。`
+          : error.message;
 
         const isDuplicate = (title) => {
             const key = titleKey(title);
@@ -1377,7 +1403,7 @@
 
           testLoading.value = true;
           const startedAt = new Date().toLocaleTimeString('zh-CN');
-          diagLog.value = `[${startedAt}] 正在${config.value.directConnection ? '直连' : '通过兼容中转'} API...\n端点: ${endpoint}\n模型: ${model}`;
+          diagLog.value = `[${startedAt}] 正在通过${proxyRouteLabel()}连接 API...\n端点: ${endpoint}\n模型: ${model}`;
           const controller = new AbortController();
           const timeout = window.setTimeout(() => controller.abort(), 25000);
 
@@ -1411,7 +1437,7 @@
           } catch (error) {
             const message = error.name === 'AbortError'
               ? '请求超时（25 秒）。请检查网络、代理服务或接口地址。'
-              : error.message;
+              : apiNetworkMessage(error);
             diagLog.value = `❌ 连接失败\n时间: ${new Date().toLocaleTimeString('zh-CN')}\n端点: ${endpoint}\n模型: ${model}\n错误: ${message}`;
           } finally {
             window.clearTimeout(timeout);
