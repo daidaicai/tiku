@@ -114,7 +114,9 @@
                   全选
                 </label>
               </div>
-              <div class="flex gap-2 w-full md:w-auto justify-end">
+              <div class="flex flex-wrap gap-2 w-full md:w-auto justify-end">
+                <button v-if="bankTab === 'all'" @click="cleanBankImages" :disabled="imageCleanWorking || !selectedBankQs.some(id => allQuestions.find(q => q.id === id)?.image)" class="apple-btn px-4 py-2 bg-sky-50 text-sky-700 font-bold text-sm hover:bg-sky-100 disabled:opacity-40 whitespace-nowrap">{{ imageCleanWorking ? `清洗中 ${imageCleanProgress}` : `清洗所选图片${selectedImageCount ? ` (${selectedImageCount})` : ''}` }}</button>
+                <button v-if="bankTab === 'all'" @click="undoImageClean" :disabled="imageCleanWorking || !canUndoImageClean" class="apple-btn px-4 py-2 bg-gray-100 text-gray-700 font-bold text-sm hover:bg-gray-200 disabled:opacity-40 whitespace-nowrap">撤回上次清洗</button>
                 <button v-if="bankTab === 'all'" @click="scanDuplicateQuestions" class="apple-btn px-4 py-2 bg-indigo-50 text-indigo-600 font-bold text-sm hover:bg-indigo-100 whitespace-nowrap">扫描重复题</button>
                 <button v-if="bankTab === 'error'" @click="removeFromErrorBook" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-yellow-50 text-yellow-600 font-bold text-sm hover:bg-yellow-100 disabled:opacity-30 whitespace-nowrap">移出错题本</button>
                 <button @click="deleteSelected" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-red-50 text-red-500 font-bold text-sm hover:bg-red-100 disabled:opacity-30 whitespace-nowrap">
@@ -512,6 +514,11 @@
         const manualAIWorking = ref(false);
         const addResult = ref({ message: '', error: false });
         const bankResult = ref({ message: '', error: false });
+        const imageCleanWorking = ref(false);
+        const imageCleanProgress = ref('');
+        const imageCleanUndo = ref(new Map());
+        const selectedImageCount = computed(() => selectedBankQs.value.filter(id => allQuestions.value.find(question => question.id === id)?.image).length);
+        const canUndoImageClean = computed(() => imageCleanUndo.value.size > 0);
         const editingQuestionId = ref('');
         const editQuestionDraft = ref(null);
         const duplicateGroups = ref([]);
@@ -626,15 +633,16 @@
           window.removeEventListener('keydown', handleImageViewerKey);
         });
 
+        const persistSnapshot = async (snapshot) => {
+          await writeQuestionsToIndexedDB(snapshot);
+          localStorage.setItem('airquiz_db_v3', JSON.stringify(compactQuestionsForLocalStorage(snapshot)));
+          localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value));
+          localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value));
+        };
         const saveData = () => {
           const snapshot = JSON.parse(JSON.stringify(allQuestions.value));
           // Images live in IndexedDB, which has a much larger browser-managed quota than localStorage.
-          writeQuestionsToIndexedDB(snapshot)
-            .then(() => {
-              localStorage.setItem('airquiz_db_v3', JSON.stringify(compactQuestionsForLocalStorage(snapshot)));
-              localStorage.setItem('airquiz_err_v3', JSON.stringify(errorBook.value));
-              localStorage.setItem('airquiz_hist_v3', JSON.stringify(examRecords.value));
-            })
+          persistSnapshot(snapshot)
             .catch(error => {
               console.error('保存题库失败：', error);
               bankResult.value = { message: `保存图片题失败：${error.message}`, error: true };
@@ -855,6 +863,83 @@
               callback(canvas.toDataURL('image/jpeg', 0.85), canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
             }; img.src = e.target.result;
           }; reader.readAsDataURL(file);
+        };
+        const cleanImageData = (source) => new Promise(resolve => {
+          const image = new Image();
+          image.onload = () => {
+            const sourceMax = Math.max(image.width, image.height);
+            const targetMax = Math.min(1600, Math.max(sourceMax, Math.round(sourceMax * 1.35)));
+            const ratio = targetMax / sourceMax;
+            const width = Math.max(1, Math.round(image.width * ratio));
+            const height = Math.max(1, Math.round(image.height * ratio));
+            const canvas = document.createElement('canvas');
+            canvas.width = width; canvas.height = height;
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
+            context.drawImage(image, 0, 0, width, height);
+            const data = context.getImageData(0, 0, width, height);
+            const pixels = data.data; const original = new Uint8ClampedArray(pixels);
+            // Mild unsharp mask plus a small contrast lift. It clarifies edges without inventing content.
+            for (let y = 1; y < height - 1; y++) {
+              for (let x = 1; x < width - 1; x++) {
+                const offset = (y * width + x) * 4;
+                for (let channel = 0; channel < 3; channel++) {
+                  const blur = (original[offset - 4 + channel] + original[offset + 4 + channel] + original[offset - width * 4 + channel] + original[offset + width * 4 + channel]) / 4;
+                  const sharpened = original[offset + channel] + (original[offset + channel] - blur) * 0.42;
+                  pixels[offset + channel] = Math.max(0, Math.min(255, (sharpened - 128) * 1.08 + 128));
+                }
+              }
+            }
+            context.putImageData(data, 0, 0);
+            resolve(canvas.toDataURL('image/jpeg', 0.94));
+          };
+          image.onerror = () => resolve('');
+          image.src = source;
+        });
+        const cleanBankImages = async () => {
+          const targets = allQuestions.value.filter(question => selectedBankQs.value.includes(question.id) && typeof question.image === 'string' && question.image.startsWith('data:image/'));
+          if (!targets.length) { bankResult.value = { message: '请先勾选至少一题带图片的题目。', error: true }; return; }
+          const originals = new Map(targets.map(question => [question.id, question.image]));
+          imageCleanWorking.value = true;
+          bankResult.value = { message: `正在本地清洗 ${targets.length} 张所选图片，请保持页面打开。`, error: false };
+          try {
+            let completed = 0; let changed = 0;
+            for (const question of targets) {
+              imageCleanProgress.value = `${completed + 1}/${targets.length}`;
+              const cleaned = await cleanImageData(question.image);
+              if (cleaned) { question.image = cleaned; changed++; }
+              completed++;
+              await new Promise(resolve => window.setTimeout(resolve, 0));
+            }
+            await persistSnapshot(JSON.parse(JSON.stringify(allQuestions.value)));
+            imageCleanUndo.value = originals;
+            bankResult.value = { message: `已本地清洗 ${changed} 张所选图片：轻度放大、提升对比度并锐化边缘。可点击“撤回上次清洗”恢复原图。`, error: false };
+          } catch (error) {
+            targets.forEach(question => { question.image = originals.get(question.id) || question.image; });
+            bankResult.value = { message: `图片清洗失败，原图未变更：${error.message}`, error: true };
+          } finally {
+            imageCleanWorking.value = false;
+            imageCleanProgress.value = '';
+          }
+        };
+        const undoImageClean = async () => {
+          if (!imageCleanUndo.value.size) return;
+          imageCleanWorking.value = true;
+          try {
+            let restored = 0;
+            imageCleanUndo.value.forEach((original, id) => {
+              const question = allQuestions.value.find(item => item.id === id);
+              if (question) { question.image = original; restored++; }
+            });
+            await persistSnapshot(JSON.parse(JSON.stringify(allQuestions.value)));
+            imageCleanUndo.value = new Map();
+            bankResult.value = { message: `已撤回上次清洗，恢复 ${restored} 张原图。`, error: false };
+          } catch (error) {
+            bankResult.value = { message: `撤回清洗失败：${error.message}`, error: true };
+          } finally {
+            imageCleanWorking.value = false;
+          }
         };
         const addAIImage = (file) => {
           if (!file || !file.type.startsWith('image/')) return;
@@ -1495,7 +1580,7 @@
 
         const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, editingQuestionId, editQuestionDraft, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, resetImageZoom, zoomImageBy, handleImageWheel, startImagePan, moveImagePan, endImagePan, startImageTouch, moveImageTouch, endImageTouch, startEditQuestion, cancelEditQuestion, toggleEditAnswer, addEditOption, removeEditOption, handleEditImageUpload, handleEditImagePaste, saveEditQuestion, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, selectedImageCount, canUndoImageClean, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, imageCleanWorking, imageCleanProgress, editingQuestionId, editQuestionDraft, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, resetImageZoom, zoomImageBy, handleImageWheel, startImagePan, moveImagePan, endImagePan, startImageTouch, moveImageTouch, endImageTouch, startEditQuestion, cancelEditQuestion, toggleEditAnswer, addEditOption, removeEditOption, handleEditImageUpload, handleEditImagePaste, saveEditQuestion, cleanBankImages, undoImageClean, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
