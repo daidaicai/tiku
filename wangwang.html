@@ -40,6 +40,7 @@
         <button @click="view = 'home'" :class="view === 'home' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-800'" class="apple-btn px-3 py-1.5 text-sm font-semibold whitespace-nowrap">首页</button>
         <button @click="view = 'bank'" :class="view === 'bank' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-800'" class="apple-btn px-3 py-1.5 text-sm font-semibold whitespace-nowrap">题库</button>
         <button @click="view = 'add'" :class="view === 'add' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-800'" class="apple-btn px-3 py-1.5 text-sm font-semibold whitespace-nowrap">添加题目</button>
+        <button @click="openExamHistory" :class="view === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-800'" class="apple-btn px-3 py-1.5 text-sm font-semibold whitespace-nowrap">考试记录</button>
         <button @click="view = 'settings'" :class="view === 'settings' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-800'" class="apple-btn px-3 py-1.5 text-sm font-semibold whitespace-nowrap">设置</button>
       </div>
     </header>
@@ -91,11 +92,72 @@
               <h3 class="text-lg font-bold text-gray-800 mb-4">📈 考试档案</h3>
               <div v-if="examRecords.length === 0" class="text-center text-sm text-gray-400 py-4">暂无测验记录</div>
               <ul v-else class="space-y-3 max-h-40 overflow-y-auto pr-2">
-                <li v-for="(rec, i) in examRecords" :key="i" class="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                <li v-for="(rec, i) in examRecords" :key="i" class="flex justify-between items-center p-3 bg-gray-50 rounded-xl gap-3">
                   <span class="text-xs text-gray-500 font-mono">{{ rec.date }}</span>
-                  <span class="text-sm font-bold" :class="rec.score >= 72 ? 'text-green-600' : 'text-red-500'">{{ rec.score }} 分</span>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-sm font-bold" :class="rec.score >= 72 ? 'text-green-600' : 'text-red-500'">{{ rec.score }} 分</span>
+                    <button @click="openExamRecord(rec)" type="button" class="text-xs font-bold text-blue-500 hover:text-blue-700">查看题目</button>
+                  </div>
                 </li>
               </ul>
+            </div>
+          </div>
+        </main>
+
+        <!-- 历次考试内容 -->
+        <main v-else-if="view === 'history'" class="space-y-4">
+          <div class="apple-card p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div>
+                <h2 class="text-xl font-bold text-gray-900">历次考试</h2>
+                <p class="text-xs text-gray-400 mt-1">查看每次考试的题目、作答和正确答案</p>
+              </div>
+              <button @click="view = 'home'" type="button" class="apple-btn px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold">返回首页</button>
+            </div>
+            <div v-if="examRecords.length === 0" class="text-center text-sm text-gray-400 py-10">暂无考试记录</div>
+            <div v-else class="grid grid-cols-1 lg:grid-cols-[minmax(220px,280px)_1fr] gap-5">
+              <div class="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+                <button v-for="(rec, i) in examRecords" :key="i" @click="selectedExamRecord = rec" type="button" :class="selectedExamRecord === rec ? 'border-blue-400 bg-blue-50' : 'border-gray-100 bg-gray-50 hover:bg-gray-100'" class="w-full text-left p-3 rounded-xl border transition-colors">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs text-gray-500 font-mono">{{ rec.date }}</span>
+                    <span class="text-sm font-bold" :class="rec.score >= 72 ? 'text-green-600' : 'text-red-500'">{{ rec.score }} 分</span>
+                  </div>
+                  <div class="text-[11px] text-gray-400 mt-1">{{ rec.questions?.length ? `${rec.questions.length} 道题` : '旧记录仅保存分数' }}</div>
+                </button>
+              </div>
+              <div v-if="selectedExamRecord" class="min-w-0">
+                <div class="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+                  <div>
+                    <h3 class="text-base font-bold text-gray-800">{{ selectedExamRecord.date }}</h3>
+                    <p class="text-xs text-gray-400 mt-1">得分 {{ selectedExamRecord.score }} 分</p>
+                  </div>
+                  <span v-if="selectedExamRecord.questions?.length" class="text-xs font-bold text-gray-500">{{ selectedExamRecord.questions.length }} 道题</span>
+                </div>
+                <div v-if="!selectedExamRecord.questions?.length" class="text-center text-sm text-gray-400 py-10">这条记录创建于历史版本，仅保存了日期和分数，没有题目快照。</div>
+                <div v-else class="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                  <article v-for="(question, questionIndex) in selectedExamRecord.questions" :key="question.id || questionIndex" class="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                    <div class="flex items-start gap-2">
+                      <span class="text-xs font-bold text-gray-400 shrink-0">{{ questionIndex + 1 }}.</span>
+                      <h4 class="text-sm font-bold text-gray-800 whitespace-pre-wrap leading-relaxed">{{ question.title || '未命名题目' }}</h4>
+                    </div>
+                    <div v-if="getHistoricalQuestionImage(question)" class="mt-3">
+                      <button @click="openImageViewer(getHistoricalQuestionImage(question))" type="button" title="全屏查看图片" class="cursor-zoom-in">
+                        <img :src="getHistoricalQuestionImage(question)" alt="历史考试题目图片" class="max-h-36 rounded-lg border border-gray-200 shadow-sm" />
+                      </button>
+                    </div>
+                    <div class="mt-3 space-y-1.5">
+                      <div v-for="(option, optionIndex) in question.options" :key="optionIndex" :class="(question.answer || []).includes(optionIndex) ? 'border-green-300 bg-green-50' : 'border-gray-100 bg-white'" class="px-3 py-2 rounded-lg border text-xs text-gray-700">
+                        <span class="font-bold text-gray-400 mr-1">{{ String.fromCharCode(65 + optionIndex) }}.</span>{{ option }}
+                      </div>
+                    </div>
+                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div class="p-2 rounded-lg bg-white border border-gray-100"><span class="text-gray-400">你的答案：</span><strong :class="getHistoricalAnswer(selectedExamRecord, question).isCorrect === true ? 'text-green-600' : 'text-red-500'">{{ formatHistoricalAnswers(getHistoricalAnswer(selectedExamRecord, question).selected) }}</strong></div>
+                      <div class="p-2 rounded-lg bg-white border border-gray-100"><span class="text-gray-400">正确答案：</span><strong class="text-green-600">{{ formatHistoricalAnswers(question.answer) }}</strong></div>
+                    </div>
+                    <div v-if="question.analysis" class="mt-2 p-3 rounded-lg bg-blue-50/60 text-xs text-gray-600 whitespace-pre-wrap"><span class="font-bold text-blue-700">解析：</span>{{ question.analysis }}</div>
+                  </article>
+                </div>
+              </div>
             </div>
           </div>
         </main>
@@ -115,8 +177,8 @@
                 </label>
               </div>
               <div class="flex flex-wrap gap-2 w-full md:w-auto justify-end">
-                <button v-if="bankTab === 'all'" @click="cleanBankImages" :disabled="imageCleanWorking || !selectedBankQs.some(id => allQuestions.find(q => q.id === id)?.image)" class="apple-btn px-4 py-2 bg-sky-50 text-sky-700 font-bold text-sm hover:bg-sky-100 disabled:opacity-40 whitespace-nowrap">{{ imageCleanWorking ? `清洗中 ${imageCleanProgress}` : `清洗所选图片${selectedImageCount ? ` (${selectedImageCount})` : ''}` }}</button>
-                <button v-if="bankTab === 'all'" @click="undoImageClean" :disabled="imageCleanWorking || !canUndoImageClean" class="apple-btn px-4 py-2 bg-gray-100 text-gray-700 font-bold text-sm hover:bg-gray-200 disabled:opacity-40 whitespace-nowrap">撤回上次清洗</button>
+                <button v-if="bankTab === 'all'" @click="enhanceBankImageClarity" :disabled="imageClarityWorking || !selectedBankQs.some(id => allQuestions.find(q => q.id === id)?.image)" class="apple-btn px-4 py-2 bg-sky-50 text-sky-700 font-bold text-sm hover:bg-sky-100 disabled:opacity-40 whitespace-nowrap">{{ imageClarityWorking ? `增强中 ${imageClarityProgress}` : `增强所选图片清晰度${selectedImageCount ? ` (${selectedImageCount})` : ''}` }}</button>
+                <button v-if="bankTab === 'all'" @click="undoImageClarity" :disabled="imageClarityWorking || !canUndoImageClarity" class="apple-btn px-4 py-2 bg-gray-100 text-gray-700 font-bold text-sm hover:bg-gray-200 disabled:opacity-40 whitespace-nowrap">撤回上次清晰度增强</button>
                 <button v-if="bankTab === 'all'" @click="scanDuplicateQuestions" class="apple-btn px-4 py-2 bg-indigo-50 text-indigo-600 font-bold text-sm hover:bg-indigo-100 whitespace-nowrap">扫描重复题</button>
                 <button v-if="bankTab === 'error'" @click="removeFromErrorBook" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-yellow-50 text-yellow-600 font-bold text-sm hover:bg-yellow-100 disabled:opacity-30 whitespace-nowrap">移出错题本</button>
                 <button @click="deleteSelected" :disabled="selectedBankQs.length === 0" class="apple-btn px-4 py-2 bg-red-50 text-red-500 font-bold text-sm hover:bg-red-100 disabled:opacity-30 whitespace-nowrap">
@@ -161,7 +223,7 @@
                       <div @paste="handleEditImagePaste" tabindex="0" class="apple-btn px-3 py-1.5 border border-indigo-100 bg-white text-indigo-600 text-xs font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400">点击后 Ctrl + V 粘贴图片</div>
                       <button v-if="editQuestionDraft.image" @click="editQuestionDraft.image = ''" type="button" class="apple-btn px-3 py-1.5 bg-red-50 text-red-500 text-xs font-bold">移除图片</button>
                     </div>
-                    <img v-if="editQuestionDraft.image" :src="editQuestionDraft.image" class="max-h-48 rounded-xl border border-gray-200 shadow-sm" />
+                    <img v-if="editQuestionDraft.image" :src="editQuestionDraft.image" @click="openImageViewer(editQuestionDraft.image)" title="全屏查看图片" class="max-h-48 rounded-xl border border-gray-200 shadow-sm cursor-zoom-in" />
                     <div class="flex justify-end gap-2 pt-1">
                       <button @click="cancelEditQuestion" type="button" class="apple-btn px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold">取消</button>
                       <button @click="saveEditQuestion" type="button" class="apple-btn px-4 py-2 bg-blue-500 text-white text-xs font-bold shadow-sm">保存修改</button>
@@ -185,7 +247,7 @@
                     <div @paste="handleBankImagePaste($event, q)" tabindex="0" class="apple-btn px-3 py-1.5 border border-indigo-100 bg-white text-indigo-600 text-xs font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400">点击后 Ctrl + V 粘贴图片</div>
                     <button v-if="q.image" @click="removeBankImage(q)" class="apple-btn px-3 py-1.5 bg-red-50 text-red-500 text-xs font-bold">移除图片</button>
                   </div>
-                  <img v-if="q.image" :src="q.image" class="mt-3 max-h-32 rounded-xl border border-gray-100 shadow-sm" />
+                  <img v-if="q.image" :src="q.image" @click="openImageViewer(q.image)" title="全屏查看图片" class="mt-3 max-h-32 rounded-xl border border-gray-100 shadow-sm cursor-zoom-in" />
                   </template>
                 </div>
               </div>
@@ -289,7 +351,7 @@
                   <input ref="manualFileInput" type="file" accept="image/*" @change="handleManualUpload" class="hidden" />
                   <div v-if="!manualQ.image" class="text-gray-400 text-xs font-bold"><span class="text-2xl block mb-1">🖼️</span>点击或粘贴图片 (仅图文组合题上传)</div>
                   <div v-else class="relative" @click.stop>
-                    <img :src="manualQ.image" class="max-h-24 rounded shadow-sm" />
+                    <img :src="manualQ.image" @click="openImageViewer(manualQ.image)" title="全屏查看图片" class="max-h-24 rounded shadow-sm cursor-zoom-in" />
                     <button @click="manualQ.image=''" class="absolute -top-2 -right-2 bg-gray-800 text-white rounded-full w-6 h-6 text-xs">✕</button>
                   </div>
                 </div>
@@ -317,7 +379,7 @@
               </div>
               <div v-if="aiImages.length" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div v-for="image in aiImages" :key="image.id" class="relative bg-gray-50 border border-gray-100 rounded-xl p-2">
-                  <img :src="image.preview" class="w-full h-28 object-cover rounded-lg" />
+                  <img :src="image.preview" @click="openImageViewer(image.preview)" title="全屏查看图片" class="w-full h-28 object-cover rounded-lg cursor-zoom-in" />
                   <button @click="removeAIImage(image.id)" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs" title="移除图片">✕</button>
                 </div>
               </div>
@@ -360,7 +422,7 @@
                 </div>
                 <p class="text-[11px] text-gray-400">第 {{ qIndex + 1 }} 题的图片会独立保存并随题目导入。{{ q._autoImage ? ' AI 已从试卷截图中自动截取，可在此更换。' : '' }}</p>
                 <div v-if="q.image" class="relative inline-block">
-                  <img :src="q.image" class="max-h-40 rounded-xl border border-gray-200 shadow-sm" />
+                  <img :src="q.image" @click="openImageViewer(q.image)" title="全屏查看图片" class="max-h-40 rounded-xl border border-gray-200 shadow-sm cursor-zoom-in" />
                   <button @click="q.image = ''" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs" title="移除图片">✕</button>
                 </div>
               </div>
@@ -439,7 +501,8 @@
         
         const allQuestions = ref([]);
         const errorBook = ref({}); 
-        const examRecords = ref([]); 
+        const examRecords = ref([]);
+        const selectedExamRecord = ref(null);
         const selectedBankQs = ref([]); 
         
         const quizState = ref({ mode: 'practice', source: 'all', questions: [], currentIdx: 0, answers: {}, submitted: false, score: 0 });
@@ -514,11 +577,11 @@
         const manualAIWorking = ref(false);
         const addResult = ref({ message: '', error: false });
         const bankResult = ref({ message: '', error: false });
-        const imageCleanWorking = ref(false);
-        const imageCleanProgress = ref('');
-        const imageCleanUndo = ref(new Map());
+        const imageClarityWorking = ref(false);
+        const imageClarityProgress = ref('');
+        const imageClarityUndo = ref(new Map());
         const selectedImageCount = computed(() => selectedBankQs.value.filter(id => allQuestions.value.find(question => question.id === id)?.image).length);
-        const canUndoImageClean = computed(() => imageCleanUndo.value.size > 0);
+        const canUndoImageClarity = computed(() => imageClarityUndo.value.size > 0);
         const editingQuestionId = ref('');
         const editQuestionDraft = ref(null);
         const duplicateGroups = ref([]);
@@ -864,7 +927,7 @@
             }; img.src = e.target.result;
           }; reader.readAsDataURL(file);
         };
-        const cleanImageData = (source) => new Promise(resolve => {
+        const enhanceImageClarity = (source) => new Promise(resolve => {
           const image = new Image();
           image.onload = () => {
             const sourceMax = Math.max(image.width, image.height);
@@ -897,48 +960,48 @@
           image.onerror = () => resolve('');
           image.src = source;
         });
-        const cleanBankImages = async () => {
+        const enhanceBankImageClarity = async () => {
           const targets = allQuestions.value.filter(question => selectedBankQs.value.includes(question.id) && typeof question.image === 'string' && question.image.startsWith('data:image/'));
           if (!targets.length) { bankResult.value = { message: '请先勾选至少一题带图片的题目。', error: true }; return; }
           const originals = new Map(targets.map(question => [question.id, question.image]));
-          imageCleanWorking.value = true;
-          bankResult.value = { message: `正在本地清洗 ${targets.length} 张所选图片，请保持页面打开。`, error: false };
+          imageClarityWorking.value = true;
+          bankResult.value = { message: `正在本地增强 ${targets.length} 张所选图片的清晰度，请保持页面打开。`, error: false };
           try {
             let completed = 0; let changed = 0;
             for (const question of targets) {
-              imageCleanProgress.value = `${completed + 1}/${targets.length}`;
-              const cleaned = await cleanImageData(question.image);
-              if (cleaned) { question.image = cleaned; changed++; }
+              imageClarityProgress.value = `${completed + 1}/${targets.length}`;
+              const enhanced = await enhanceImageClarity(question.image);
+              if (enhanced) { question.image = enhanced; changed++; }
               completed++;
               await new Promise(resolve => window.setTimeout(resolve, 0));
             }
             await persistSnapshot(JSON.parse(JSON.stringify(allQuestions.value)));
-            imageCleanUndo.value = originals;
-            bankResult.value = { message: `已本地清洗 ${changed} 张所选图片：轻度放大、提升对比度并锐化边缘。可点击“撤回上次清洗”恢复原图。`, error: false };
+            imageClarityUndo.value = originals;
+            bankResult.value = { message: `已本地增强 ${changed} 张所选图片的清晰度：轻度放大、提升对比度并锐化边缘。可点击“撤回上次清晰度增强”恢复原图。`, error: false };
           } catch (error) {
             targets.forEach(question => { question.image = originals.get(question.id) || question.image; });
-            bankResult.value = { message: `图片清洗失败，原图未变更：${error.message}`, error: true };
+            bankResult.value = { message: `图片清晰度增强失败，原图未变更：${error.message}`, error: true };
           } finally {
-            imageCleanWorking.value = false;
-            imageCleanProgress.value = '';
+            imageClarityWorking.value = false;
+            imageClarityProgress.value = '';
           }
         };
-        const undoImageClean = async () => {
-          if (!imageCleanUndo.value.size) return;
-          imageCleanWorking.value = true;
+        const undoImageClarity = async () => {
+          if (!imageClarityUndo.value.size) return;
+          imageClarityWorking.value = true;
           try {
             let restored = 0;
-            imageCleanUndo.value.forEach((original, id) => {
+            imageClarityUndo.value.forEach((original, id) => {
               const question = allQuestions.value.find(item => item.id === id);
               if (question) { question.image = original; restored++; }
             });
             await persistSnapshot(JSON.parse(JSON.stringify(allQuestions.value)));
-            imageCleanUndo.value = new Map();
-            bankResult.value = { message: `已撤回上次清洗，恢复 ${restored} 张原图。`, error: false };
+            imageClarityUndo.value = new Map();
+            bankResult.value = { message: `已撤回上次清晰度增强，恢复 ${restored} 张原图。`, error: false };
           } catch (error) {
-            bankResult.value = { message: `撤回清洗失败：${error.message}`, error: true };
+            bankResult.value = { message: `撤回清晰度增强失败：${error.message}`, error: true };
           } finally {
-            imageCleanWorking.value = false;
+            imageClarityWorking.value = false;
           }
         };
         const addAIImage = (file) => {
@@ -1267,6 +1330,24 @@
             quizState.value = { mode: 'exam', source: 'all', questions: [...singles.slice(0, 35), ...multis.slice(0, 25)], currentIdx: 0, answers: {}, submitted: false, score: 0 }; view.value = 'quiz';
         };
 
+        const openExamHistory = () => {
+            if (!selectedExamRecord.value && examRecords.value.length) selectedExamRecord.value = examRecords.value[0];
+            view.value = 'history';
+        };
+        const openExamRecord = (record) => {
+            selectedExamRecord.value = record;
+            view.value = 'history';
+        };
+        const getHistoricalAnswer = (record, question) => record?.answers?.[question?.id] || { selected: [], isCorrect: false };
+        const formatHistoricalAnswers = (answer) => {
+            const values = Array.isArray(answer) ? answer : [];
+            return values.length ? values.map(value => String.fromCharCode(65 + Number(value))).join(', ') : '未作答';
+        };
+        const getHistoricalQuestionImage = (question) => {
+            if (question?.image) return question.image;
+            return allQuestions.value.find(item => item.id === question?.id)?.image || '';
+        };
+
         const quitQuiz = () => { if(confirm('确定退出吗？进度不保存。')) { view.value = 'home'; saveData(); } };
         const changeQuestion = (step) => { quizState.value.currentIdx += step; };
         const toggleAnswer = (idx) => {
@@ -1300,8 +1381,20 @@
                 evaluateQuestion(q, ans); ans.checked = true;
                 processErrorBookLogic(q.id, ans.isCorrect, ans); total += ans.score;
             });
-            quizState.value.score = total; quizState.value.submitted = true; quizState.value.currentIdx = 0; 
-            examRecords.value.unshift({ date: new Date().toLocaleString(), score: total }); saveData();
+            quizState.value.score = total; quizState.value.submitted = true; quizState.value.currentIdx = 0;
+            const questionSnapshots = quizState.value.questions.map(question => ({
+                id: question.id,
+                type: question.type,
+                title: question.title,
+                options: [...(question.options || [])],
+                answer: [...(question.answer || [])],
+                analysis: question.analysis || ''
+            }));
+            const answerSnapshots = JSON.parse(JSON.stringify(quizState.value.answers));
+            const record = { date: new Date().toLocaleString(), score: total, questions: questionSnapshots, answers: answerSnapshots };
+            examRecords.value.unshift(record);
+            selectedExamRecord.value = record;
+            saveData();
         };
 
         const getQuizOptionClass = (idx) => {
@@ -1578,9 +1671,9 @@
           }; reader.readAsText(file); 
         };
 
-        const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; saveData(); alert('已清空'); } };
+        const clearAllData = () => { if(confirm('⚠️ 清空不可恢复，确定吗？')) { allQuestions.value = []; errorBook.value = {}; examRecords.value = []; selectedExamRecord.value = null; saveData(); alert('已清空'); } };
 
-        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, selectedImageCount, canUndoImageClean, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, imageCleanWorking, imageCleanProgress, editingQuestionId, editQuestionDraft, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, resetImageZoom, zoomImageBy, handleImageWheel, startImagePan, moveImagePan, endImagePan, startImageTouch, moveImageTouch, endImageTouch, startEditQuestion, cancelEditQuestion, toggleEditAnswer, addEditOption, removeEditOption, handleEditImageUpload, handleEditImagePaste, saveEditQuestion, cleanBankImages, undoImageClean, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
+        return { view, addMode, bankTab, allQuestions, errorBook, examRecords, selectedExamRecord, singleCount, multiCount, displayedBankQuestions, selectedBankQs, allVisibleSelected, selectedImageCount, canUndoImageClarity, duplicateQuestionIds, duplicateGroups, quizState, activeQuestion, currentAnsRecord, isQuestionLocked, previewQuestions, loading, testLoading, importLog, importError, diagLog, rawText, aiImages, manualQ, manualParseMode, manualAIWorking, addResult, bankResult, imageClarityWorking, imageClarityProgress, editingQuestionId, editQuestionDraft, settingsResult, imageViewer, config, isDuplicate, getPreviewDuplicate, duplicateLabel, openImageViewer, closeImageViewer, resetImageZoom, zoomImageBy, handleImageWheel, startImagePan, moveImagePan, endImagePan, startImageTouch, moveImageTouch, endImageTouch, startEditQuestion, cancelEditQuestion, toggleEditAnswer, addEditOption, removeEditOption, handleEditImageUpload, handleEditImagePaste, saveEditQuestion, enhanceBankImageClarity, undoImageClarity, openExamHistory, openExamRecord, getHistoricalAnswer, formatHistoricalAnswers, getHistoricalQuestionImage, handleGlobalPaste, handleFileUpload, handleManualUpload, handlePreviewImageUpload, handlePreviewImagePaste, handleBankImageUpload, handleBankImagePaste, removeBankImage, clearImage, removeAIImage, deleteSelected, toggleSelectAll, removeFromErrorBook, scanDuplicateQuestions, selectDuplicateGroup, clearDuplicateScan, startQuiz, startExam, quitQuiz, changeQuestion, toggleAnswer, checkCurrentQuestion, submitExam, getQuizOptionClass, getGridClass, toggleManualAnswer, commitManualQuestion, processWithAI, organizeManualInput, togglePreviewAnswer, commitQuestions, exportData, importData, clearAllData, saveSettings, testConnection, handleQuickPaste, quickParseManual, importManualBatch };
       }
     }).mount('#app');
   </script>
